@@ -6,6 +6,7 @@ import { getSigningDidKey, isValidDidDoc, type DidDocument } from '@atproto/comm
 import { Secp256k1Keypair, verifySignature } from '@atproto/crypto';
 import { verifySig } from '@atproto/crypto/dist/secp256k1/operations.js';
 import { fromString as ui8FromString } from 'uint8arrays';
+import { assignTranche } from '../../sport-lexicon/generated/tranches';
 
 export const PERFORMANCE_LEXICON = 'app.sport.performance' as const;
 export const COMMENT_LEXICON = 'app.sport.comment' as const;
@@ -13,6 +14,15 @@ export const PEER_LEXICON = 'app.sport.peer' as const;
 
 const DEFAULT_PDS_ACTOR_STORE =
   process.env.PDS_ACTOR_STORE ?? '/var/lib/docker/volumes/pds_local_data/_data/actors';
+
+export const PDS2_ACTOR_STORE =
+  process.env.PDS2_ACTOR_STORE ??
+  '/var/lib/docker/volumes/pds_local_2_data/_data/actors';
+
+export function actorStoreRootForPds(pdsUrl: string): string {
+  if (pdsUrl.includes(':2584')) return PDS2_ACTOR_STORE;
+  return DEFAULT_PDS_ACTOR_STORE;
+}
 
 /** Load the PDS-managed repo signing key (dev: local docker volume). */
 export async function loadKeypairFromActorStore(
@@ -108,14 +118,20 @@ export async function verifyBlobSignature(signed: SignedBlob): Promise<boolean> 
   return verifySig(pub, payload, sig);
 }
 
+export { assignTranche } from '../../sport-lexicon/generated/tranches';
+
 export async function publishPerformance(
   agent: AtpAgent,
   performance: PerformanceRecord
 ): Promise<string> {
+  const tranche =
+    performance.tranche ??
+    assignTranche(performance.movement, performance.value, performance.unit);
+  const record: PerformanceRecord = { ...performance, tranche };
   const res = await agent.com.atproto.repo.createRecord({
     repo: agent.session!.did,
     collection: PERFORMANCE_LEXICON,
-    record: performance,
+    record,
   });
   return res.data.uri;
 }
@@ -198,45 +214,69 @@ export async function resolvePeerFromDID(did: string, pdsUrl: string): Promise<s
   return latest[0]?.peerId ?? null;
 }
 
+async function listRepoDidsOnPds(agent: AtpAgent): Promise<string[]> {
+  const dids: string[] = [];
+  try {
+    let cursor: string | undefined;
+    do {
+      const listed = await agent.com.atproto.sync.listReposByCollection({
+        collection: PERFORMANCE_LEXICON,
+        limit: 100,
+        cursor,
+      });
+      dids.push(...listed.data.repos.map((repo) => repo.did));
+      cursor = listed.data.cursor;
+    } while (cursor);
+    return dids;
+  } catch {
+    // Dev-only fallback: local PDS v0.5.6 exposes listRepos but not listReposByCollection.
+    // Production/public PDS should use listReposByCollection (indexed, scoped to collection).
+    let cursor: string | undefined;
+    do {
+      const listed = await agent.com.atproto.sync.listRepos({ limit: 100, cursor });
+      dids.push(...listed.data.repos.map((repo) => repo.did));
+      cursor = listed.data.cursor;
+    } while (cursor);
+    return dids;
+  }
+}
+
 export async function getFeed(
-  agents: AtpAgent[],
   movement: string,
-  tranche?: string
+  tranche: string | undefined,
+  pdsUrls: string[]
 ): Promise<Array<{ uri: string; record: PerformanceRecord; source: string }>> {
   const all: Array<{ uri: string; record: PerformanceRecord; source: string }> = [];
-  for (const agent of agents) {
-    const source = agent.service.toString();
-    const res = await agent.com.atproto.repo.listRecords({
-      repo: agent.session!.did,
-      collection: PERFORMANCE_LEXICON,
-      limit: 100,
-    });
-    for (const item of res.data.records) {
-      const record = item.value as PerformanceRecord;
-      if (record.movement !== movement) continue;
-      if (tranche && record.tranche !== tranche) continue;
-      all.push({ uri: item.uri, record, source });
+
+  for (const pdsUrl of pdsUrls) {
+    const agent = new AtpAgent({ service: pdsUrl });
+    const repoDids = await listRepoDidsOnPds(agent);
+    for (const did of repoDids) {
+      const res = await agent.com.atproto.repo.listRecords({
+        repo: did,
+        collection: PERFORMANCE_LEXICON,
+        limit: 100,
+      });
+      for (const item of res.data.records) {
+        const record = item.value as PerformanceRecord;
+        if (record.movement !== movement) continue;
+        if (tranche && record.tranche !== tranche) continue;
+        all.push({ uri: item.uri, record, source: pdsUrl });
+      }
     }
   }
+
   return all.sort(
     (a, b) => new Date(b.record.createdAt).getTime() - new Date(a.record.createdAt).getTime()
   );
 }
 
-export function trancheForSnatch(kg: number): string {
-  if (kg <= 30) return 'T1';
-  if (kg <= 50) return 'T2';
-  if (kg <= 70) return 'T3';
-  if (kg <= 90) return 'T4';
-  return 'T5';
-}
-
 export async function getLeaderboard(
-  agents: AtpAgent[],
   movement: string,
-  tranche: string
+  tranche: string,
+  pdsUrls: string[]
 ): Promise<Array<{ uri: string; record: PerformanceRecord }>> {
-  const feed = await getFeed(agents, movement, tranche);
+  const feed = await getFeed(movement, tranche, pdsUrls);
   return feed
     .map(({ uri, record }) => ({ uri, record }))
     .sort((a, b) => b.record.value - a.record.value);
