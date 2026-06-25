@@ -297,3 +297,29 @@ export async function postComment(
   });
   return res.data.uri;
 }
+
+export async function getPerformanceByRkey(
+  pdsUrl: string,
+  did: string,
+  rkey: string
+): Promise<{ uri: string; record: PerformanceRecord }> {
+  const agent = new AtpAgent({ service: pdsUrl });
+  const res = await agent.com.atproto.repo.getRecord({
+    repo: did,
+    collection: PERFORMANCE_LEXICON,
+    rkey,
+  });
+  return {
+    uri: res.data.uri,
+    record: res.data.value as unknown as PerformanceRecord,
+  };
+}
+
+export function parsePerformanceUri(uri: string): { did: string; rkey: string } {
+  const withoutScheme = uri.replace(/^at:\/\//, '');
+  const [did, collection, rkey] = withoutScheme.split('/');
+  if (!did || collection !== PERFORMANCE_LEXICON || !rkey) {
+    throw new Error(`invalid performance URI: ${uri}`);
+  }
+  return { did, rkey };
+}

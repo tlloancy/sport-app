@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 
-const CHUNK_DIR = path.join(process.cwd(), 'public/test-player/chunks');
+const CHUNK_DIRS = [
+  path.join(process.cwd(), 'public/chunks'),
+  path.join(process.cwd(), 'public/test-player/chunks'),
+];
 
 /**
  * Server-side chunk delivery for the browser player.
@@ -10,9 +13,17 @@ const CHUNK_DIR = path.join(process.cwd(), 'public/test-player/chunks');
  */
 export async function fetchChunkServer(hash: string, peerIds: string[]): Promise<Buffer> {
   void peerIds;
-  const file = path.join(CHUNK_DIR, `${hash}.ts`);
-  if (!fs.existsSync(file)) {
-    throw new Error(`chunk not found: ${hash}`);
+  for (const dir of CHUNK_DIRS) {
+    const file = path.join(dir, `${hash}.ts`);
+    if (fs.existsSync(file)) {
+      return fs.readFileSync(file);
+    }
   }
-  return fs.readFileSync(file);
+  throw new Error(`chunk not found: ${hash}`);
+}
+
+export function chunkStorageDir(): string {
+  const dir = CHUNK_DIRS[0]!;
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
 }
