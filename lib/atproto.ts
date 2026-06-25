@@ -57,6 +57,12 @@ export interface PerformanceRecord {
   createdAt: string;
 }
 
+export interface CommentRecord {
+  performanceUri: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface SignedBlob {
   blobHash: string;
   signature: string;
@@ -213,13 +219,13 @@ export async function resolvePeerFromDID(did: string, pdsUrl: string): Promise<s
   return latest[0]?.peerId ?? null;
 }
 
-async function listRepoDidsOnPds(agent: AtpAgent): Promise<string[]> {
+async function listRepoDidsOnPds(agent: AtpAgent, collection: string): Promise<string[]> {
   const dids: string[] = [];
   try {
     let cursor: string | undefined;
     do {
       const listed = await agent.com.atproto.sync.listReposByCollection({
-        collection: PERFORMANCE_LEXICON,
+        collection,
         limit: 100,
         cursor,
       });
@@ -229,7 +235,6 @@ async function listRepoDidsOnPds(agent: AtpAgent): Promise<string[]> {
     return dids;
   } catch {
     // Dev-only fallback: local PDS v0.5.6 exposes listRepos but not listReposByCollection.
-    // Production/public PDS should use listReposByCollection (indexed, scoped to collection).
     let cursor: string | undefined;
     do {
       const listed = await agent.com.atproto.sync.listRepos({ limit: 100, cursor });
@@ -249,7 +254,7 @@ export async function getFeed(
 
   for (const pdsUrl of pdsUrls) {
     const agent = new AtpAgent({ service: pdsUrl });
-    const repoDids = await listRepoDidsOnPds(agent);
+    const repoDids = await listRepoDidsOnPds(agent, PERFORMANCE_LEXICON);
     for (const did of repoDids) {
       const res = await agent.com.atproto.repo.listRecords({
         repo: did,
@@ -286,16 +291,53 @@ export async function postComment(
   performanceUri: string,
   text: string
 ): Promise<string> {
+  const record: CommentRecord = {
+    performanceUri,
+    text,
+    createdAt: new Date().toISOString(),
+  };
   const res = await agent.com.atproto.repo.createRecord({
     repo: agent.session!.did,
     collection: COMMENT_LEXICON,
-    record: {
-      performanceUri,
-      text,
-      createdAt: new Date().toISOString(),
-    },
+    record: record as unknown as Record<string, unknown>,
   });
   return res.data.uri;
+}
+
+export async function getComments(
+  performanceUri: string,
+  pdsUrls: string[]
+): Promise<
+  Array<{ uri: string; record: CommentRecord; source: string; authorDid: string }>
+> {
+  const all: Array<{
+    uri: string;
+    record: CommentRecord;
+    source: string;
+    authorDid: string;
+  }> = [];
+
+  for (const pdsUrl of pdsUrls) {
+    const agent = new AtpAgent({ service: pdsUrl });
+    const repoDids = await listRepoDidsOnPds(agent, COMMENT_LEXICON);
+    for (const did of repoDids) {
+      const res = await agent.com.atproto.repo.listRecords({
+        repo: did,
+        collection: COMMENT_LEXICON,
+        limit: 100,
+      });
+      for (const item of res.data.records) {
+        const record = item.value as unknown as CommentRecord;
+        if (record.performanceUri !== performanceUri) continue;
+        all.push({ uri: item.uri, record, source: pdsUrl, authorDid: did });
+      }
+    }
+  }
+
+  return all.sort(
+    (a, b) =>
+      new Date(a.record.createdAt).getTime() - new Date(b.record.createdAt).getTime()
+  );
 }
 
 export async function getPerformanceByRkey(
