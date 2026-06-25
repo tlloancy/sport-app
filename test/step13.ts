@@ -69,9 +69,10 @@ async function main() {
   await postComment(account2.agent, performanceUriOut, commentText);
 
   const scriptPath = path.resolve(process.cwd(), 'test/step13.ts');
+  const tsxCli = path.resolve(process.cwd(), 'node_modules/tsx/dist/cli.mjs');
   const result = spawnSync(
-    'npx',
-    ['tsx', scriptPath, '--verify-only', performanceUriOut, commentText],
+    process.execPath,
+    [tsxCli, scriptPath, '--verify-only', performanceUriOut, commentText],
     {
       env: { PDS_2_URL: PDS_2 },
       stdio: 'inherit',
