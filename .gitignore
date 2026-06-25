@@ -34,3 +34,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# playwright / generated fixtures
+/test-results/
+/public/chunks/
+/public/test-player/chunks/*.ts
+/tmp-hls-*
+/.tmp-hls-*

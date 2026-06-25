@@ -1,0 +1,14 @@
+{
+  "hashes": [
+    "bfe81cbdb63a09098f902be39ab4006e99369ff76585c54f5ced21d925da83cb",
+    "93fc118939569ac17ebc08f7e9ca5207c7b698bf764cf2b941c5bb3273f2f145",
+    "ecc4fee7996236dafac8fd98050b1765743953d5c98310dd423d556fc614c92e",
+    "96d0e5cc52f60c54d5cc89438461ab6dad425e606e2eaa2ec577f0b9b2befa9c",
+    "270b54619a676fd55d6d4340c64b040b33c06f7d86f194f32814bd21756f50b4"
+  ],
+  "peers": [
+    "peer_a_id",
+    "peer_b_id",
+    "peer_c_id"
+  ]
+}

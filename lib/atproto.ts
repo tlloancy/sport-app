@@ -5,8 +5,7 @@ import { AtpAgent } from '@atproto/api';
 import { getSigningDidKey, isValidDidDoc, type DidDocument } from '@atproto/common-web';
 import { Secp256k1Keypair, verifySignature } from '@atproto/crypto';
 import { verifySig } from '@atproto/crypto/dist/secp256k1/operations.js';
-import { fromString as ui8FromString } from 'uint8arrays';
-import { assignTranche } from '../../sport-lexicon/generated/tranches';
+import { assignTranche } from '@/lib/tranches';
 
 export const PERFORMANCE_LEXICON = 'app.sport.performance' as const;
 export const COMMENT_LEXICON = 'app.sport.comment' as const;
@@ -114,11 +113,11 @@ export async function signBlob(
 export async function verifyBlobSignature(signed: SignedBlob): Promise<boolean> {
   const payload = new TextEncoder().encode(`${signed.did}:${signed.blobHash}`);
   const sig = Buffer.from(signed.signature, 'base64');
-  const pub = ui8FromString(signed.publicKey, 'hex');
+  const pub = new Uint8Array(Buffer.from(signed.publicKey, 'hex'));
   return verifySig(pub, payload, sig);
 }
 
-export { assignTranche } from '../../sport-lexicon/generated/tranches';
+export { assignTranche } from '@/lib/tranches';
 
 export async function publishPerformance(
   agent: AtpAgent,
@@ -131,7 +130,7 @@ export async function publishPerformance(
   const res = await agent.com.atproto.repo.createRecord({
     repo: agent.session!.did,
     collection: PERFORMANCE_LEXICON,
-    record,
+    record: record as unknown as Record<string, unknown>,
   });
   return res.data.uri;
 }
@@ -191,7 +190,7 @@ export async function announcePeerId(agent: AtpAgent, peerId: string): Promise<s
   const res = await agent.com.atproto.repo.createRecord({
     repo: agent.session!.did,
     collection: PEER_LEXICON,
-    record,
+    record: record as unknown as Record<string, unknown>,
   });
   return res.data.uri;
 }
@@ -208,7 +207,7 @@ export async function resolvePeerFromDID(did: string, pdsUrl: string): Promise<s
     limit: 100,
   });
   const latest = res.data.records
-    .map((item) => item.value as PeerRecord)
+    .map((item) => item.value as unknown as PeerRecord)
     .filter((r) => typeof r.peerId === 'string' && typeof r.createdAt === 'string')
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return latest[0]?.peerId ?? null;
@@ -258,7 +257,7 @@ export async function getFeed(
         limit: 100,
       });
       for (const item of res.data.records) {
-        const record = item.value as PerformanceRecord;
+        const record = item.value as unknown as PerformanceRecord;
         if (record.movement !== movement) continue;
         if (tranche && record.tranche !== tranche) continue;
         all.push({ uri: item.uri, record, source: pdsUrl });

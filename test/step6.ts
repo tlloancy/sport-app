@@ -31,7 +31,7 @@ async function main() {
 
   const uri = await publishPerformance(agent, performance);
   const retrieved = await getRecord(agent, uri);
-  const record = retrieved.value as PerformanceRecord;
+  const record = retrieved.value as unknown as PerformanceRecord;
 
   if (record.movement !== 'snatch' || record.value !== 35 || record.tranche !== 'T2') {
     console.error('FAIL: record fields mismatch', record);
