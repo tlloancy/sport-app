@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import PerformanceClient from './PerformanceClient';
 import { getPerformanceByRkey, resolvePeerFromDID } from '@/lib/atproto';
+import { getGatewayPeerId } from '@/lib/p2p-gateway';
 import { pdsUrl } from '@/lib/upload-agent';
 
 export default async function PerformancePage({
@@ -22,7 +23,8 @@ export default async function PerformancePage({
 
   const { record } = await getPerformanceByRkey(pdsUrl(), did, params.id);
   const hashes = record.chunkManifest ? (JSON.parse(record.chunkManifest) as string[]) : [];
-  const peerId = (await resolvePeerFromDID(did, pdsUrl())) ?? 'local-peer';
+  const peerId =
+    (await resolvePeerFromDID(did, pdsUrl())) ?? (await getGatewayPeerId()) ?? 'local-peer';
   const peers = [peerId];
 
   return (

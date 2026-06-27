@@ -10,6 +10,7 @@ import {
   UPLOAD_LIMITS_MESSAGE,
   MAX_UPLOAD_BYTES,
 } from '@/lib/chunker';
+import { seedChunksFromDir } from '@/lib/p2p-gateway';
 import { chunkStorageDir } from '@/lib/p2p-server';
 import { classifyChunkError, uploadErrorBody } from '@/lib/upload-error';
 import { MAX_UPLOAD_DURATION_SEC } from '@/lib/upload-limits';
@@ -74,15 +75,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(body, { status: body.status });
     }
 
-    const result = chunkVideoFile(tmpPath, chunkStorageDir(), {
+    const outDir = chunkStorageDir();
+    const result = chunkVideoFile(tmpPath, outDir, {
       durationSec,
       videoHash,
     });
+
+    const seeded = await seedChunksFromDir(result.hashes, outDir);
+
     return NextResponse.json({
       hashes: result.hashes,
       videoHash: result.videoHash,
       chunkManifest: result.chunkManifest,
       durationSec: result.durationSec,
+      p2pSeeded: seeded,
     });
   } catch (err) {
     if (err instanceof UploadLimitError) {

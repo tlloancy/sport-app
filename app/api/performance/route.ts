@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parsePerformanceUri, publishPerformance, type PerformanceRecord } from '@/lib/atproto';
+import {
+  announcePeerId,
+  parsePerformanceUri,
+  publishPerformance,
+  type PerformanceRecord,
+} from '@/lib/atproto';
+import { getGatewayPeerId } from '@/lib/p2p-gateway';
 import { getUploadAgent } from '@/lib/upload-agent';
 import { classifyPublishError, uploadErrorBody } from '@/lib/upload-error';
 
@@ -66,7 +72,13 @@ export async function POST(req: NextRequest) {
     const agent = await getUploadAgent();
     const uri = await publishPerformance(agent, performance);
     const { did, rkey } = parsePerformanceUri(uri);
-    return NextResponse.json({ uri, did, rkey });
+
+    const peerId = await getGatewayPeerId();
+    if (peerId) {
+      await announcePeerId(agent, peerId);
+    }
+
+    return NextResponse.json({ uri, did, rkey, peerId: peerId ?? null });
   } catch (err) {
     const payload = classifyPublishError(err);
     return NextResponse.json(payload, { status: payload.status });

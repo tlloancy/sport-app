@@ -1,6 +1,7 @@
 import { getFeed, resolvePeerFromDID } from '@/lib/atproto';
 import { isActiveCategory } from '@/lib/db';
 import { filterFeedItems } from '@/lib/feed-filter';
+import { getGatewayPeerId } from '@/lib/p2p-gateway';
 import {
   FEED_PAGE_SIZE,
   feedTotalPages,
@@ -37,7 +38,8 @@ export async function loadFeedPage(movement: string, page: number): Promise<Feed
     const did = uri.replace(/^at:\/\//, '').split('/')[0]!;
     let peerId = peerCache.get(did);
     if (!peerId) {
-      peerId = (await resolvePeerFromDID(did, pdsUrl())) ?? 'local-peer';
+      peerId =
+        (await resolvePeerFromDID(did, pdsUrl())) ?? (await getGatewayPeerId()) ?? 'local-peer';
       peerCache.set(did, peerId);
     }
     items.push({
