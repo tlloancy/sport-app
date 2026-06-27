@@ -1,58 +1,61 @@
 export const dynamic = 'force-dynamic';
 
-import FeedItem from '@/components/FeedItem';
-import { getFeed } from '@/lib/atproto';
+import FeedPaginator from '@/components/FeedPaginator';
+import { loadFeedPage } from '@/lib/feed-server';
+import { FEED_PAGE_SIZE, type FeedPagePayload } from '@/lib/feed-pagination';
 import { pdsUrls } from '@/lib/upload-agent';
 import Link from 'next/link';
 
 export default async function FeedPage({
   searchParams,
 }: {
-  searchParams: { movement?: string };
+  searchParams: { movement?: string; page?: string };
 }) {
   const movement = searchParams.movement ?? 'snatch';
-  const urls = pdsUrls();
-  let items: Awaited<ReturnType<typeof getFeed>> = [];
+  const page = Math.max(1, Number.parseInt(searchParams.page ?? '1', 10) || 1);
+
+  let initial: FeedPagePayload = {
+    page: 1,
+    pageSize: FEED_PAGE_SIZE,
+    totalPages: 1,
+    total: 0,
+    movement,
+    items: [],
+  };
   let feedError: string | null = null;
 
-  console.log('[feed/page] movement:', movement, 'pdsUrls:', urls);
-
-  if (urls.length === 0) {
+  if (pdsUrls().length === 0) {
     feedError = 'Aucune URL PDS configurée (PDS_URL vide).';
   } else {
     try {
-      items = await getFeed(movement, undefined, urls);
+      initial = await loadFeedPage(movement, page);
     } catch (err) {
       feedError = err instanceof Error ? err.message : 'getFeed a échoué';
-      console.error('[feed/page] getFeed error:', err);
     }
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-lg px-6 py-10">
-      <header className="mb-8 flex items-baseline justify-between gap-4 border-b border-neutral-200 pb-6">
-        <h1 className="text-xl font-semibold">Feed</h1>
-        <Link href="/" className="text-sm text-neutral-500">
-          Accueil
-        </Link>
-      </header>
-
+    <main className="relative mx-auto min-h-screen max-w-5xl px-6 py-10">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-neutral-100/80 to-transparent"
+        aria-hidden
+      />
       {feedError ? (
-        <p data-testid="feed-error" className="mb-4 text-sm text-red-600">
-          {feedError}
-        </p>
-      ) : null}
-
-      {items.length === 0 ? (
-        <p data-testid="feed-empty" className="text-neutral-500">
-          Aucune performance pour l&apos;instant.
-        </p>
+        <>
+          <header className="relative mb-8 border-b border-neutral-200 pb-6">
+            <h1 className="text-xl font-semibold tracking-tight">Feed</h1>
+          </header>
+          <p data-testid="feed-error" className="text-sm text-red-600">
+            {feedError}
+          </p>
+          <Link href="/" className="mt-6 inline-block text-sm text-neutral-500">
+            Accueil
+          </Link>
+        </>
       ) : (
-        <section>
-          {items.map(({ uri, record }) => (
-            <FeedItem key={uri} uri={uri} record={record} />
-          ))}
-        </section>
+        <div className="relative">
+          <FeedPaginator movement={movement} initial={initial} />
+        </div>
       )}
     </main>
   );
