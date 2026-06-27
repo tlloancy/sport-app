@@ -30,7 +30,7 @@ import {
 } from '@/lib/upload-limits';
 
 const UNITS = ['kg', 's', 'm', 'reps'] as const;
-const REDIRECT_DELAY_MS = 2000;
+const REDIRECT_DELAY_MS = 1000;
 
 const fieldClass =
   'w-full rounded-md border border-neutral-300 bg-white px-3 py-2.5 text-neutral-900 outline-none focus:border-neutral-900';
@@ -661,7 +661,7 @@ export default function UploadClient() {
           >
             Voir la performance
           </Link>
-          <p className="mt-1 text-xs text-green-800">Redirection automatique dans 2 secondes…</p>
+          <p className="mt-1 text-xs text-green-800">Redirection automatique dans 1 seconde…</p>
         </div>
       ) : null}
 

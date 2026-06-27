@@ -1,5 +1,7 @@
 import { UPLOAD_LIMITS_MESSAGE } from '@/lib/upload-limits';
 
+export type UploadStep = 'chunk' | 'publish';
+
 export type UploadErrorType =
   | 'missing_file'
   | 'invalid_body'

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -57,7 +58,9 @@ export async function POST(req: NextRequest) {
   const tmpPath = path.join(tmpDir, file.name || 'upload.mp4');
 
   try {
-    fs.writeFileSync(tmpPath, Buffer.from(await file.arrayBuffer()));
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const videoHash = crypto.createHash('sha256').update(bytes).digest('hex');
+    fs.writeFileSync(tmpPath, bytes);
 
     const durationSec = probeVideoDuration(tmpPath);
     if (durationSec > MAX_UPLOAD_DURATION_SEC) {
@@ -71,7 +74,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(body, { status: body.status });
     }
 
-    const result = chunkVideoFile(tmpPath, chunkStorageDir());
+    const result = chunkVideoFile(tmpPath, chunkStorageDir(), {
+      durationSec,
+      videoHash,
+    });
     return NextResponse.json({
       hashes: result.hashes,
       videoHash: result.videoHash,

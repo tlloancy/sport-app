@@ -5,20 +5,27 @@ const PDS_URL = DEFAULT_PDS_URL;
 const UPLOAD_HANDLE = process.env.UPLOAD_HANDLE ?? 'uploader.test';
 const UPLOAD_PASSWORD = process.env.UPLOAD_PASSWORD ?? 'upload-test-pass';
 
-/** Dev/test agent — login or create the configured upload account on the local PDS. */
+let cachedAgent: AtpAgent | null = null;
+
+/** Dev/test agent — login once and reuse session across publishes. */
 export async function getUploadAgent(): Promise<AtpAgent> {
+  if (cachedAgent?.session) {
+    return cachedAgent;
+  }
+
   const agent = new AtpAgent({ service: PDS_URL });
   try {
     await agent.login({ identifier: UPLOAD_HANDLE, password: UPLOAD_PASSWORD });
-    return agent;
   } catch {
     await agent.createAccount({
       handle: UPLOAD_HANDLE,
       password: UPLOAD_PASSWORD,
       email: `${UPLOAD_HANDLE.replace(/[^a-z0-9]/gi, '-')}@localhost.test`,
     });
-    return agent;
   }
+
+  cachedAgent = agent;
+  return agent;
 }
 
 export function pdsUrl(): string {
