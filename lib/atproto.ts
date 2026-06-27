@@ -245,70 +245,69 @@ async function listAllRepoDids(agent: AtpAgent): Promise<string[]> {
 export async function getFeed(
   movement: string,
   tranche: string | undefined,
-  pdsUrls: string[]
+  pdsUrls: string[],
+  logs?: string[]
 ): Promise<Array<{ uri: string; record: PerformanceRecord; source: string }>> {
-  console.log('[getFeed] movement:', movement, 'tranche:', tranche ?? '(any)');
-  console.log('[getFeed] PDS URLs:', pdsUrls);
+  const log = (message: string) => {
+    console.log('[getFeed]', message);
+    logs?.push(message);
+  };
+
+  log(`movement=${movement} tranche=${tranche ?? '(any)'}`);
+  log(`PDS URLs: ${JSON.stringify(pdsUrls)}`);
 
   if (!pdsUrls.length) {
-    console.warn('[getFeed] pdsUrls is empty — nothing to query');
+    log('ERROR: pdsUrls is empty — nothing to query');
     return [];
   }
 
   const results: Array<{ uri: string; record: PerformanceRecord; source: string }> = [];
 
   for (const pdsUrl of pdsUrls) {
-    console.log('[getFeed] querying PDS:', pdsUrl);
-    const agent = new AtpAgent({ service: pdsUrl });
-
-    let repos;
     try {
-      repos = await agent.api.com.atproto.sync.listRepos({ limit: 100 });
-    } catch (err) {
-      console.error('[getFeed] listRepos failed for', pdsUrl, err);
-      continue;
-    }
+      log(`Connecting to ${pdsUrl}`);
+      const agent = new AtpAgent({ service: pdsUrl });
 
-    console.log('[getFeed] repos found:', repos.data.repos.length, 'on', pdsUrl);
+      const repos = await agent.api.com.atproto.sync.listRepos({ limit: 100 });
+      log(`Found ${repos.data.repos.length} repos on ${pdsUrl}`);
 
-    for (const repo of repos.data.repos) {
-      try {
-        const records = await agent.api.com.atproto.repo.listRecords({
-          repo: repo.did,
-          collection: PERFORMANCE_LEXICON,
-          limit: 50,
-        });
-        console.log(
-          '[getFeed]',
-          repo.did,
-          '→',
-          records.data.records.length,
-          'raw performance record(s)'
-        );
+      for (const repo of repos.data.repos) {
+        log(`Scanning DID: ${repo.did}`);
+        try {
+          const records = await agent.api.com.atproto.repo.listRecords({
+            repo: repo.did,
+            collection: PERFORMANCE_LEXICON,
+            limit: 50,
+          });
+          log(`Found ${records.data.records.length} records for ${repo.did}`);
 
-        for (const item of records.data.records) {
-          const record = item.value as unknown as PerformanceRecord;
-          if (record.movement !== movement) {
-            console.log(
-              '[getFeed] skip',
-              item.uri,
-              `(movement "${record.movement}" ≠ "${movement}")`
-            );
-            continue;
+          for (const item of records.data.records) {
+            const record = item.value as unknown as PerformanceRecord;
+            if (record.movement !== movement) {
+              log(
+                `Skip ${item.uri}: movement "${record.movement}" ≠ "${movement}"`
+              );
+              continue;
+            }
+            if (tranche && record.tranche !== tranche) {
+              log(`Skip ${item.uri}: tranche "${record.tranche}" ≠ "${tranche}"`);
+              continue;
+            }
+            log(`Match ${item.uri}`);
+            results.push({ uri: item.uri, record, source: pdsUrl });
           }
-          if (tranche && record.tranche !== tranche) {
-            console.log('[getFeed] skip', item.uri, `(tranche "${record.tranche}" ≠ "${tranche}")`);
-            continue;
-          }
-          results.push({ uri: item.uri, record, source: pdsUrl });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          log(`ERROR listRecords for ${repo.did}: ${message}`);
         }
-      } catch (err) {
-        console.warn('[getFeed] listRecords failed for', repo.did, err);
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log(`ERROR on ${pdsUrl}: ${message}`);
     }
   }
 
-  console.log('[getFeed] matched performances:', results.length);
+  log(`Matched performances: ${results.length}`);
   return results.sort(
     (a, b) => new Date(b.record.createdAt).getTime() - new Date(a.record.createdAt).getTime()
   );
