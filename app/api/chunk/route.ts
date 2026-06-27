@@ -2,9 +2,16 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
-import { chunkVideoFile } from '@/lib/chunker';
+import {
+  chunkVideoFile,
+  probeVideoDuration,
+  UploadLimitError,
+  UPLOAD_LIMITS_MESSAGE,
+  MAX_UPLOAD_BYTES,
+} from '@/lib/chunker';
 import { chunkStorageDir } from '@/lib/p2p-server';
 import { classifyChunkError, uploadErrorBody } from '@/lib/upload-error';
+import { MAX_UPLOAD_DURATION_SEC } from '@/lib/upload-limits';
 
 export const runtime = 'nodejs';
 
@@ -35,18 +42,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(body, { status: body.status });
   }
 
+  if (file.size > MAX_UPLOAD_BYTES) {
+    const body = uploadErrorBody(
+      'chunk',
+      'upload_limit',
+      UPLOAD_LIMITS_MESSAGE,
+      413,
+      `Taille ${file.size} octets > ${MAX_UPLOAD_BYTES} octets (50 Mo)`
+    );
+    return NextResponse.json(body, { status: body.status });
+  }
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upload-'));
   const tmpPath = path.join(tmpDir, file.name || 'upload.mp4');
 
   try {
     fs.writeFileSync(tmpPath, Buffer.from(await file.arrayBuffer()));
+
+    const durationSec = probeVideoDuration(tmpPath);
+    if (durationSec > MAX_UPLOAD_DURATION_SEC) {
+      const body = uploadErrorBody(
+        'chunk',
+        'upload_limit',
+        UPLOAD_LIMITS_MESSAGE,
+        413,
+        `Durée ${Math.round(durationSec * 10) / 10}s > ${MAX_UPLOAD_DURATION_SEC}s`
+      );
+      return NextResponse.json(body, { status: body.status });
+    }
+
     const result = chunkVideoFile(tmpPath, chunkStorageDir());
     return NextResponse.json({
       hashes: result.hashes,
       videoHash: result.videoHash,
       chunkManifest: result.chunkManifest,
+      durationSec: result.durationSec,
     });
   } catch (err) {
+    if (err instanceof UploadLimitError) {
+      const body = uploadErrorBody('chunk', 'upload_limit', err.message, 413);
+      return NextResponse.json(body, { status: body.status });
+    }
     const body = classifyChunkError(err);
     return NextResponse.json(body, { status: body.status });
   } finally {

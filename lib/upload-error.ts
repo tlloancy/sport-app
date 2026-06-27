@@ -1,4 +1,4 @@
-export type UploadStep = 'chunk' | 'publish';
+import { UPLOAD_LIMITS_MESSAGE } from '@/lib/upload-limits';
 
 export type UploadErrorType =
   | 'missing_file'
@@ -11,6 +11,7 @@ export type UploadErrorType =
   | 'pds_publish'
   | 'network'
   | 'invalid_response'
+  | 'upload_limit'
   | 'unknown';
 
 export interface UploadErrorOrigin {
@@ -153,12 +154,14 @@ function isUploadErrorType(value: unknown): value is UploadErrorType {
     value === 'pds_publish' ||
     value === 'network' ||
     value === 'invalid_response' ||
+    value === 'upload_limit' ||
     value === 'unknown'
   );
 }
 
 function inferType(step: UploadStep, status: number, message?: string): UploadErrorType {
   if (status === 0 || status >= 502) return 'network';
+  if (status === 413) return 'upload_limit';
   if (status === 400 && step === 'chunk') return 'missing_file';
   if (status === 400 && step === 'publish') return 'missing_fields';
   if (message?.toLowerCase().includes('ffmpeg')) return 'ffmpeg';
@@ -198,6 +201,12 @@ export function classifyChunkError(err: unknown): UploadErrorPayload {
   const raw = err instanceof Error ? err.message : String(err);
   const lower = raw.toLowerCase();
 
+  if (lower.includes('trop longue') || lower.includes('too long') || lower.includes('50mb')) {
+    return withOrigin(
+      uploadErrorBody('chunk', 'upload_limit', UPLOAD_LIMITS_MESSAGE, 413, raw),
+      err
+    );
+  }
   if (
     lower.includes('ffmpeg') ||
     lower.includes('invalid data found') ||
@@ -318,6 +327,8 @@ export function errorTypeLabel(type: UploadErrorType): string {
       return 'Réseau';
     case 'invalid_response':
       return 'Réponse serveur';
+    case 'upload_limit':
+      return 'Limites vidéo';
     default:
       return 'Erreur inconnue';
   }

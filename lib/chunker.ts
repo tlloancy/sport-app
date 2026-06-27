@@ -3,15 +3,57 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
+import {
+  isWithinUploadLimits,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_DURATION_SEC,
+  UPLOAD_LIMITS_MESSAGE,
+} from '@/lib/upload-limits';
 
 export interface ChunkResult {
   hashes: string[];
   videoHash: string;
   chunkManifest: string;
+  durationSec: number;
+}
+
+export class UploadLimitError extends Error {
+  readonly status = 413;
+
+  constructor(message = UPLOAD_LIMITS_MESSAGE) {
+    super(message);
+    this.name = 'UploadLimitError';
+  }
+}
+
+/** Detect video duration in seconds via ffprobe. */
+export function probeVideoDuration(inputPath: string): number {
+  const out = execSync(
+    `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${inputPath}"`,
+    { stdio: 'pipe' }
+  )
+    .toString('utf8')
+    .trim();
+
+  const durationSec = Number.parseFloat(out);
+  if (!Number.isFinite(durationSec) || durationSec <= 0) {
+    throw new Error(`ffprobe could not read duration (${out || 'empty'})`);
+  }
+  return durationSec;
+}
+
+export function assertUploadWithinLimits(sizeBytes: number, durationSec: number): void {
+  if (!isWithinUploadLimits(sizeBytes, durationSec)) {
+    throw new UploadLimitError();
+  }
 }
 
 /** Split a video file into 2s HLS MPEG-TS segments keyed by SHA256 hash. */
 export function chunkVideoFile(inputPath: string, outputDir: string): ChunkResult {
+  const sizeBytes = fs.statSync(inputPath).size;
+  const durationSec = probeVideoDuration(inputPath);
+  assertUploadWithinLimits(sizeBytes, durationSec);
+
   fs.mkdirSync(outputDir, { recursive: true });
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hls-chunk-'));
 
@@ -45,8 +87,15 @@ export function chunkVideoFile(inputPath: string, outputDir: string): ChunkResul
       hashes.push(hash);
     }
 
-    return { hashes, videoHash, chunkManifest: JSON.stringify(hashes) };
+    return {
+      hashes,
+      videoHash,
+      chunkManifest: JSON.stringify(hashes),
+      durationSec: Math.round(durationSec * 10) / 10,
+    };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
+
+export { MAX_UPLOAD_BYTES, MAX_UPLOAD_DURATION_SEC, UPLOAD_LIMITS_MESSAGE };

@@ -21,6 +21,13 @@ import {
   type TraceLevel,
   type UploadPhase,
 } from '@/lib/upload-trace';
+import {
+  formatDurationSec,
+  isWithinUploadLimits,
+  probeClientVideoDuration,
+  UPLOAD_LIMITS_MESSAGE,
+  UPLOAD_RULES,
+} from '@/lib/upload-limits';
 
 const UNITS = ['kg', 's', 'm', 'reps'] as const;
 const REDIRECT_DELAY_MS = 2000;
@@ -36,6 +43,7 @@ type PublishedPerformance = {
 type ChunkResponse = {
   videoHash: string;
   chunkManifest: string;
+  durationSec?: number;
 };
 
 type PerformanceResponse = ChunkResponse & {
@@ -88,7 +96,7 @@ function uploadChunk(formData: FormData, hooks: UploadChunkHooks): Promise<Chunk
         processingStarted = true;
         hooks.onProcessingStart();
         hooks.trace('FFMPEG', 'Fichier reçu par le serveur — découpage ffmpeg en cours', {
-          detail: 'Le client attend la réponse JSON (durée variable)',
+          detail: 'ffprobe + ffmpeg côté serveur (durée variable)',
           level: 'warn',
         });
       }
@@ -114,7 +122,7 @@ function uploadChunk(formData: FormData, hooks: UploadChunkHooks): Promise<Chunk
       if (xhr.status >= 200 && xhr.status < 300) {
         const data = raw as ChunkResponse;
         hooks.trace('OK', 'Chunking terminé', {
-          detail: `videoHash=${data.videoHash.slice(0, 16)}…`,
+          detail: `videoHash=${data.videoHash.slice(0, 16)}… · durée=${data.durationSec ?? '?'}s`,
           level: 'ok',
         });
         resolve(data);
@@ -205,6 +213,11 @@ export default function UploadClient() {
   const [sendPct, setSendPct] = useState(0);
   const [published, setPublished] = useState<PublishedPerformance | null>(null);
   const [trace, setTrace] = useState<TraceEntry[]>([]);
+  const [videoDurationSec, setVideoDurationSec] = useState<number | null>(null);
+  const [fileCheckStatus, setFileCheckStatus] = useState<
+    'idle' | 'checking' | 'ok' | 'reject'
+  >('idle');
+  const [fileCheckMessage, setFileCheckMessage] = useState<string | null>(null);
 
   const inProgress = phase === 'send' || phase === 'ffmpeg' || phase === 'publish';
 
@@ -239,9 +252,53 @@ export default function UploadClient() {
     };
   }, []);
 
+  async function analyzeFile(picked: File) {
+    setFileCheckStatus('checking');
+    setFileCheckMessage('Analyse des métadonnées vidéo…');
+    setVideoDurationSec(null);
+
+    try {
+      const durationSec = await probeClientVideoDuration(picked);
+      setVideoDurationSec(durationSec);
+      const ok = isWithinUploadLimits(picked.size, durationSec);
+      if (ok) {
+        setFileCheckStatus('ok');
+        setFileCheckMessage(
+          `OK — ${formatBytes(picked.size)} · ${formatDurationSec(durationSec)}`
+        );
+        pushTrace('INIT', 'Fichier conforme', {
+          detail: `${picked.name} · ${formatBytes(picked.size)} · ${formatDurationSec(durationSec)}`,
+          level: 'ok',
+        });
+      } else {
+        setFileCheckStatus('reject');
+        setFileCheckMessage(UPLOAD_LIMITS_MESSAGE);
+        pushTrace('ERR', UPLOAD_LIMITS_MESSAGE, {
+          detail: `${formatBytes(picked.size)} · ${formatDurationSec(durationSec)}`,
+          level: 'error',
+        });
+      }
+    } catch (err) {
+      setFileCheckStatus('reject');
+      setFileCheckMessage(
+        err instanceof Error ? err.message : 'Impossible de lire la vidéo'
+      );
+      pushTrace('ERR', 'Analyse vidéo impossible', {
+        detail: err instanceof Error ? err.message : undefined,
+        level: 'error',
+      });
+    }
+  }
+
   function resetTrace() {
     traceRef.current = [];
     setTrace([]);
+  }
+
+  function resetFileCheck() {
+    setVideoDurationSec(null);
+    setFileCheckStatus('idle');
+    setFileCheckMessage(null);
   }
 
   function buttonLabel() {
@@ -275,6 +332,26 @@ export default function UploadClient() {
       fail({
         error: 'Sélectionne une vidéo avant de publier.',
         type: 'missing_file',
+        step: 'chunk',
+        status: 400,
+      });
+      return;
+    }
+
+    if (fileCheckStatus === 'reject') {
+      fail({
+        error: fileCheckMessage ?? UPLOAD_LIMITS_MESSAGE,
+        type: 'upload_limit',
+        step: 'chunk',
+        status: 413,
+      });
+      return;
+    }
+
+    if (fileCheckStatus === 'checking') {
+      fail({
+        error: 'Analyse vidéo en cours — patiente un instant.',
+        type: 'chunk_processing',
         step: 'chunk',
         status: 400,
       });
@@ -323,6 +400,10 @@ export default function UploadClient() {
           setProgress(PHASE_PROGRESS.ffmpeg);
         },
       });
+
+      if (chunkData.durationSec != null) {
+        setVideoDurationSec(chunkData.durationSec);
+      }
 
       setPhase('publish');
       setProgress(PHASE_PROGRESS.publishStart);
@@ -421,15 +502,41 @@ export default function UploadClient() {
         onChange={(e) => {
           const picked = e.target.files?.[0] ?? null;
           setFile(picked);
+          resetFileCheck();
           if (picked) {
-            pushTrace('INIT', 'Fichier sélectionné', {
-              detail: `${picked.name} · ${formatBytes(picked.size)}`,
-              level: 'dim',
-            });
+            void analyzeFile(picked);
           }
         }}
         className={fieldClass}
       />
+
+      <div
+        data-testid="upload-rules"
+        className="rounded-md border-2 border-neutral-900 bg-white px-4 py-3 text-sm text-neutral-900"
+      >
+        <p className="font-semibold tracking-tight">Conditions avant publication</p>
+        <ul className="mt-2 list-inside list-disc space-y-1 text-neutral-800">
+          {UPLOAD_RULES.map((rule) => (
+            <li key={rule}>{rule}</li>
+          ))}
+        </ul>
+      </div>
+
+      {file && fileCheckMessage ? (
+        <p
+          data-testid="upload-file-check"
+          className={`rounded-md border px-3 py-2 text-sm ${
+            fileCheckStatus === 'ok'
+              ? 'border-neutral-900 bg-neutral-50 text-neutral-900'
+              : fileCheckStatus === 'reject'
+                ? 'border-red-600 bg-red-50 text-red-900'
+                : 'border-neutral-300 bg-neutral-50 text-neutral-700'
+          }`}
+          role="status"
+        >
+          {fileCheckMessage}
+        </p>
+      ) : null}
 
       <input
         data-testid="upload-movement"
@@ -518,7 +625,11 @@ export default function UploadClient() {
         <PhaseStatus
           phase="ffmpeg"
           showSpinner
-          label="Traitement ffmpeg…"
+          label={
+            videoDurationSec != null
+              ? `Découpage en cours (vidéo de ${formatDurationSec(videoDurationSec)})…`
+              : 'Découpage en cours…'
+          }
           testId="upload-ffmpeg-status"
         />
       ) : null}
@@ -557,7 +668,7 @@ export default function UploadClient() {
       <button
         data-testid="upload-submit"
         type="submit"
-        disabled={busy}
+        disabled={busy || fileCheckStatus === 'reject' || fileCheckStatus === 'checking'}
         className="mt-2 h-11 rounded-md bg-neutral-900 text-sm font-medium text-white disabled:bg-neutral-400 disabled:opacity-100"
       >
         {buttonLabel()}
