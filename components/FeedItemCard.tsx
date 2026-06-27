@@ -1,5 +1,6 @@
 'use client';
 
+import ReportButton from '@/components/ReportButton';
 import VideoPlayer from '@/components/VideoPlayer';
 import type { FeedEntry } from '@/lib/feed-pagination';
 
@@ -40,7 +41,10 @@ export default function FeedItemCard({ item }: { item: FeedEntry }) {
         </h2>
         <p className="mt-1 flex items-center justify-between text-[11px] text-neutral-500">
           <span>Tranche {item.record.tranche ?? '—'}</span>
-          <time dateTime={item.record.createdAt}>{date}</time>
+          <span className="flex items-center gap-2">
+            <ReportButton uri={item.uri} movement={item.record.movement} />
+            <time dateTime={item.record.createdAt}>{date}</time>
+          </span>
         </p>
       </header>
     </article>
