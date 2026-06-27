@@ -17,4 +17,19 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+
+  .upload-trace-line {
+    animation: trace-flush 280ms ease-out both;
+  }
+}
+
+@keyframes trace-flush {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

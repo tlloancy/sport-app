@@ -1,5 +1,5 @@
 import { AtpAgent } from '@atproto/api';
-import { DEFAULT_PDS_URL } from '@/lib/atproto';
+import { DEFAULT_PDS_URL, defaultPdsUrls } from '@/lib/atproto';
 
 const PDS_URL = DEFAULT_PDS_URL;
 const UPLOAD_HANDLE = process.env.UPLOAD_HANDLE ?? 'uploader.test';
@@ -23,4 +23,8 @@ export async function getUploadAgent(): Promise<AtpAgent> {
 
 export function pdsUrl(): string {
   return PDS_URL;
+}
+
+export function pdsUrls(): string[] {
+  return defaultPdsUrls();
 }

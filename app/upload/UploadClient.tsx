@@ -1,8 +1,9 @@
 'use client';
 
+import UploadTraceLog from '@/components/UploadTraceLog';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   errorOrigin,
   errorTypeLabel,
@@ -11,15 +12,21 @@ import {
   UploadFailure,
   type UploadErrorPayload,
 } from '@/lib/upload-error';
+import {
+  createTraceEntry,
+  formatBytes,
+  PHASE_PROGRESS,
+  UPLOAD_PHASE_LABEL,
+  type TraceEntry,
+  type TraceLevel,
+  type UploadPhase,
+} from '@/lib/upload-trace';
 
 const UNITS = ['kg', 's', 'm', 'reps'] as const;
-const CHUNK_PROGRESS_MAX = 70;
 const REDIRECT_DELAY_MS = 2000;
 
 const fieldClass =
   'w-full rounded-md border border-neutral-300 bg-white px-3 py-2.5 text-neutral-900 outline-none focus:border-neutral-900';
-
-type Phase = 'idle' | 'upload' | 'publish' | 'done';
 
 type PublishedPerformance = {
   did: string;
@@ -29,11 +36,6 @@ type PublishedPerformance = {
 type ChunkResponse = {
   videoHash: string;
   chunkManifest: string;
-  error?: string;
-  type?: string;
-  step?: string;
-  status?: number;
-  details?: string;
 };
 
 type PerformanceResponse = ChunkResponse & {
@@ -41,22 +43,62 @@ type PerformanceResponse = ChunkResponse & {
   did?: string;
 };
 
-function uploadChunk(
-  formData: FormData,
-  onFileProgress: (fileRatio: number) => void
-): Promise<ChunkResponse> {
+type TraceFn = (tag: string, message: string, opts?: { detail?: string; level?: TraceLevel }) => void;
+
+type UploadChunkHooks = {
+  trace: TraceFn;
+  onSendProgress: (ratio: number, loaded: number, total: number) => void;
+  onSendComplete: (loaded: number) => void;
+  onProcessingStart: () => void;
+};
+
+function uploadChunk(formData: FormData, hooks: UploadChunkHooks): Promise<ChunkResponse> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    let lastLoggedPct = -1;
+    let processingStarted = false;
+    let lastTotal = 0;
+
+    hooks.trace('XHR', 'Ouverture POST /api/chunk');
     xhr.open('POST', '/api/chunk');
     xhr.responseType = 'text';
 
+    xhr.upload.onloadstart = () => {
+      hooks.trace('XHR', 'Transfert HTTP démarré');
+    };
+
     xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && event.total > 0) {
-        onFileProgress(event.loaded / event.total);
+      if (!event.lengthComputable || event.total <= 0) return;
+      lastTotal = event.total;
+      const ratio = event.loaded / event.total;
+      hooks.onSendProgress(ratio, event.loaded, event.total);
+
+      const pct = Math.floor(ratio * 100);
+      if (pct >= lastLoggedPct + 10 || pct === 100) {
+        lastLoggedPct = pct;
+        hooks.trace('NET', `Envoi ${pct}%`, {
+          detail: `${formatBytes(event.loaded)} / ${formatBytes(event.total)}`,
+        });
+      }
+    };
+
+    xhr.upload.onloadend = () => {
+      hooks.onSendComplete(lastTotal);
+      if (!processingStarted) {
+        processingStarted = true;
+        hooks.onProcessingStart();
+        hooks.trace('FFMPEG', 'Fichier reçu par le serveur — découpage ffmpeg en cours', {
+          detail: 'Le client attend la réponse JSON (durée variable)',
+          level: 'warn',
+        });
       }
     };
 
     xhr.onload = () => {
+      hooks.trace('XHR', `Réponse HTTP ${xhr.status}`, {
+        detail: `${xhr.responseText.length} caractères`,
+      });
+
       let raw: unknown;
       try {
         raw = JSON.parse(xhr.responseText);
@@ -70,7 +112,12 @@ function uploadChunk(
       }
 
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(raw as ChunkResponse);
+        const data = raw as ChunkResponse;
+        hooks.trace('OK', 'Chunking terminé', {
+          detail: `videoHash=${data.videoHash.slice(0, 16)}…`,
+          level: 'ok',
+        });
+        resolve(data);
         return;
       }
 
@@ -80,12 +127,14 @@ function uploadChunk(
     };
 
     xhr.onerror = () => {
+      hooks.trace('ERR', 'Erreur réseau XHR', { level: 'error' });
       reject(
         new UploadFailure(parseUploadErrorPayload(null, 'chunk', 0))
       );
     };
 
     xhr.onabort = () => {
+      hooks.trace('ERR', 'Transfert annulé', { level: 'error' });
       reject(
         new UploadFailure({
           error: 'Envoi de la vidéo annulé.',
@@ -96,6 +145,7 @@ function uploadChunk(
       );
     };
 
+    hooks.trace('XHR', 'Envoi du FormData…');
     xhr.send(formData);
   });
 }
@@ -108,21 +158,68 @@ function performanceHref({ did, rkey }: PublishedPerformance): string {
   return `/performance/${rkey}?did=${encodeURIComponent(did)}`;
 }
 
+function PhaseStatus({
+  phase,
+  showSpinner,
+  label,
+  testId,
+}: {
+  phase: UploadPhase;
+  showSpinner: boolean;
+  label: string;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="flex items-center gap-2 text-sm text-neutral-800"
+      role="status"
+    >
+      {showSpinner ? (
+        <span
+          data-testid={`${testId}-spinner`}
+          className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900"
+          aria-hidden
+        />
+      ) : (
+        <span className="inline-block h-4 w-4 rounded-full bg-neutral-900" aria-hidden />
+      )}
+      <span>{label}</span>
+      <span className="text-xs text-neutral-500">— {UPLOAD_PHASE_LABEL[phase]}</span>
+    </div>
+  );
+}
+
 export default function UploadClient() {
   const router = useRouter();
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const traceRef = useRef<TraceEntry[]>([]);
   const [movement, setMovement] = useState('snatch');
   const [value, setValue] = useState('35');
   const [unit, setUnit] = useState<(typeof UNITS)[number]>('kg');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<UploadErrorPayload | null>(null);
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<UploadPhase | 'idle'>('idle');
   const [progress, setProgress] = useState(0);
-  const [uploadPct, setUploadPct] = useState(0);
+  const [sendPct, setSendPct] = useState(0);
   const [published, setPublished] = useState<PublishedPerformance | null>(null);
+  const [trace, setTrace] = useState<TraceEntry[]>([]);
 
-  const inProgress = phase === 'upload' || phase === 'publish';
+  const inProgress = phase === 'send' || phase === 'ffmpeg' || phase === 'publish';
+
+  const pushTrace = useCallback(
+    (tag: string, message: string, opts?: { detail?: string; level?: TraceLevel }) => {
+      const entry = createTraceEntry(tag, message, opts);
+      traceRef.current = [...traceRef.current, entry];
+      setTrace(traceRef.current);
+      if (typeof console !== 'undefined') {
+        const line = opts?.detail ? `${message} — ${opts.detail}` : message;
+        console.log(`[upload:${tag}] ${line}`);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!inProgress) return;
@@ -142,11 +239,17 @@ export default function UploadClient() {
     };
   }, []);
 
+  function resetTrace() {
+    traceRef.current = [];
+    setTrace([]);
+  }
+
   function buttonLabel() {
     if (phase === 'done') return 'Publié !';
     if (!busy) return 'Publier';
-    if (phase === 'publish') return 'Publication...';
-    return `Upload ${uploadPct}%...`;
+    if (phase === 'ffmpeg') return 'Traitement ffmpeg…';
+    if (phase === 'publish') return 'Publication ATProto…';
+    return `Envoi ${sendPct}%…`;
   }
 
   function fail(info: UploadErrorPayload) {
@@ -154,11 +257,15 @@ export default function UploadClient() {
       clearTimeout(redirectTimer.current);
       redirectTimer.current = null;
     }
+    pushTrace('ERR', info.error, {
+      detail: `${errorTypeLabel(info.type)} · HTTP ${info.status}`,
+      level: 'error',
+    });
     setError(info);
     setBusy(false);
     setPhase('idle');
     setProgress(0);
-    setUploadPct(0);
+    setSendPct(0);
     setPublished(null);
   }
 
@@ -179,35 +286,69 @@ export default function UploadClient() {
       redirectTimer.current = null;
     }
 
+    resetTrace();
     setBusy(true);
     setError(null);
     setPublished(null);
-    setPhase('upload');
+    setPhase('send');
     setProgress(0);
-    setUploadPct(0);
+    setSendPct(0);
+
+    pushTrace('INIT', 'Session upload démarrée', {
+      detail: `${file.name} · ${formatBytes(file.size)} · ${movement} ${value} ${unit}`,
+    });
+    pushTrace('SYS', 'Ne quitte pas cette page pendant la publication', { level: 'warn' });
 
     try {
       const chunkForm = new FormData();
       chunkForm.append('file', file);
-      const chunkData = await uploadChunk(chunkForm, (fileRatio) => {
-        const pct = Math.min(100, Math.round(fileRatio * 100));
-        setUploadPct(pct);
-        setProgress(Math.min(CHUNK_PROGRESS_MAX, Math.round(fileRatio * CHUNK_PROGRESS_MAX)));
+
+      const chunkData = await uploadChunk(chunkForm, {
+        trace: pushTrace,
+        onSendProgress: (ratio, loaded, total) => {
+          const pct = Math.min(100, Math.round(ratio * 100));
+          setSendPct(pct);
+          setProgress(Math.min(PHASE_PROGRESS.sendMax, Math.round(ratio * PHASE_PROGRESS.sendMax)));
+        },
+        onSendComplete: (loaded) => {
+          setPhase('ffmpeg');
+          setProgress(PHASE_PROGRESS.ffmpeg);
+          pushTrace('NET', 'Transfert HTTP terminé', {
+            detail: formatBytes(loaded),
+            level: 'ok',
+          });
+        },
+        onProcessingStart: () => {
+          setPhase('ffmpeg');
+          setProgress(PHASE_PROGRESS.ffmpeg);
+        },
       });
-      setProgress(CHUNK_PROGRESS_MAX);
+
       setPhase('publish');
+      setProgress(PHASE_PROGRESS.publishStart);
+      pushTrace('PDS', 'Publication ATProto — POST /api/performance', {
+        detail: `videoHash=${chunkData.videoHash.slice(0, 16)}…`,
+      });
+
+      const pubBody = {
+        movement,
+        value: Number(value),
+        unit,
+        videoHash: chunkData.videoHash,
+        chunkManifest: chunkData.chunkManifest,
+      };
+      pushTrace('PDS', 'Payload performance', {
+        detail: JSON.stringify(pubBody),
+        level: 'dim',
+      });
 
       const pubRes = await fetch('/api/performance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          movement,
-          value: Number(value),
-          unit,
-          videoHash: chunkData.videoHash,
-          chunkManifest: chunkData.chunkManifest,
-        }),
+        body: JSON.stringify(pubBody),
       });
+
+      pushTrace('PDS', `Réponse /api/performance — HTTP ${pubRes.status}`);
 
       let pubRaw: unknown;
       try {
@@ -234,12 +375,19 @@ export default function UploadClient() {
       }
 
       const result = { did: pubData.did, rkey: pubData.rkey };
-      setProgress(100);
+      setProgress(PHASE_PROGRESS.done);
       setPhase('done');
       setPublished(result);
       setBusy(false);
 
+      pushTrace('OK', 'Performance publiée', {
+        detail: `did=${result.did} rkey=${result.rkey}`,
+        level: 'ok',
+      });
+      pushTrace('SYS', `Redirection dans ${REDIRECT_DELAY_MS / 1000}s`, { level: 'dim' });
+
       redirectTimer.current = setTimeout(() => {
+        pushTrace('SYS', 'Redirection vers la fiche performance', { level: 'dim' });
         router.push(performanceHref(result));
       }, REDIRECT_DELAY_MS);
     } catch (err) {
@@ -260,6 +408,9 @@ export default function UploadClient() {
     }
   }
 
+  const showProgressBar = busy || phase === 'done';
+  const showPercent = phase === 'send';
+
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <input
@@ -267,7 +418,16 @@ export default function UploadClient() {
         type="file"
         accept="video/*"
         disabled={busy}
-        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        onChange={(e) => {
+          const picked = e.target.files?.[0] ?? null;
+          setFile(picked);
+          if (picked) {
+            pushTrace('INIT', 'Fichier sélectionné', {
+              detail: `${picked.name} · ${formatBytes(picked.size)}`,
+              level: 'dim',
+            });
+          }
+        }}
         className={fieldClass}
       />
 
@@ -317,7 +477,7 @@ export default function UploadClient() {
         </p>
       ) : null}
 
-      {busy || phase === 'done' ? (
+      {showProgressBar ? (
         <div
           data-testid="upload-progress"
           className="flex items-center gap-3"
@@ -330,29 +490,49 @@ export default function UploadClient() {
               style={{ width: `${progress}%` }}
             />
           </div>
-          <span
-            data-testid="upload-progress-text"
-            className="w-10 text-right text-sm tabular-nums text-neutral-600"
-          >
-            {progress}%
-          </span>
+          {showPercent ? (
+            <span
+              data-testid="upload-progress-text"
+              className="w-10 text-right text-sm tabular-nums text-neutral-600"
+            >
+              {progress}%
+            </span>
+          ) : (
+            <span className="w-10 text-center text-neutral-400" aria-hidden>
+              ···
+            </span>
+          )}
         </div>
       ) : null}
 
-      {phase === 'publish' ? (
-        <div
-          data-testid="upload-publish-status"
-          className="flex items-center gap-2 text-sm text-neutral-700"
-          role="status"
-        >
-          <span
-            data-testid="upload-publish-spinner"
-            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900"
-            aria-hidden
-          />
-          Publication sur ATProto...
-        </div>
+      {phase === 'send' && busy ? (
+        <PhaseStatus
+          phase="send"
+          showSpinner={false}
+          label="Envoi de la vidéo…"
+          testId="upload-send-status"
+        />
       ) : null}
+
+      {phase === 'ffmpeg' ? (
+        <PhaseStatus
+          phase="ffmpeg"
+          showSpinner
+          label="Traitement ffmpeg…"
+          testId="upload-ffmpeg-status"
+        />
+      ) : null}
+
+      {phase === 'publish' ? (
+        <PhaseStatus
+          phase="publish"
+          showSpinner
+          label="Publication sur ATProto…"
+          testId="upload-publish-status"
+        />
+      ) : null}
+
+      <UploadTraceLog entries={trace} active={inProgress} />
 
       {phase === 'done' && published ? (
         <div

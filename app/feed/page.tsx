@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import FeedItem from '@/components/FeedItem';
 import { getFeed } from '@/lib/atproto';
-import { pdsUrl } from '@/lib/upload-agent';
+import { pdsUrls } from '@/lib/upload-agent';
 import Link from 'next/link';
 
 export default async function FeedPage({
@@ -11,11 +11,21 @@ export default async function FeedPage({
   searchParams: { movement?: string };
 }) {
   const movement = searchParams.movement ?? 'snatch';
+  const urls = pdsUrls();
   let items: Awaited<ReturnType<typeof getFeed>> = [];
-  try {
-    items = await getFeed(movement, undefined, [pdsUrl()]);
-  } catch {
-    items = [];
+  let feedError: string | null = null;
+
+  console.log('[feed/page] movement:', movement, 'pdsUrls:', urls);
+
+  if (urls.length === 0) {
+    feedError = 'Aucune URL PDS configurée (PDS_URL vide).';
+  } else {
+    try {
+      items = await getFeed(movement, undefined, urls);
+    } catch (err) {
+      feedError = err instanceof Error ? err.message : 'getFeed a échoué';
+      console.error('[feed/page] getFeed error:', err);
+    }
   }
 
   return (
@@ -26,6 +36,12 @@ export default async function FeedPage({
           Accueil
         </Link>
       </header>
+
+      {feedError ? (
+        <p data-testid="feed-error" className="mb-4 text-sm text-red-600">
+          {feedError}
+        </p>
+      ) : null}
 
       {items.length === 0 ? (
         <p data-testid="feed-empty" className="text-neutral-500">

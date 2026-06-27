@@ -12,6 +12,15 @@ export const COMMENT_LEXICON = 'app.sport.comment' as const;
 export const PEER_LEXICON = 'app.sport.peer' as const;
 
 export const DEFAULT_PDS_URL = process.env.PDS_URL ?? 'http://localhost:2583';
+export const DEFAULT_PDS2_URL = process.env.PDS_2_URL ?? 'http://localhost:2584';
+
+/** Non-empty PDS base URLs for feed / debug queries. */
+export function defaultPdsUrls(): string[] {
+  const urls = [DEFAULT_PDS_URL, DEFAULT_PDS2_URL].filter(
+    (url): url is string => typeof url === 'string' && url.length > 0
+  );
+  return Array.from(new Set(urls));
+}
 
 const DEFAULT_PDS_ACTOR_STORE =
   process.env.PDS_ACTOR_STORE ?? '/var/lib/docker/volumes/pds_local_data/_data/actors';
@@ -238,11 +247,30 @@ export async function getFeed(
   tranche: string | undefined,
   pdsUrls: string[]
 ): Promise<Array<{ uri: string; record: PerformanceRecord; source: string }>> {
+  console.log('[getFeed] movement:', movement, 'tranche:', tranche ?? '(any)');
+  console.log('[getFeed] PDS URLs:', pdsUrls);
+
+  if (!pdsUrls.length) {
+    console.warn('[getFeed] pdsUrls is empty — nothing to query');
+    return [];
+  }
+
   const results: Array<{ uri: string; record: PerformanceRecord; source: string }> = [];
 
   for (const pdsUrl of pdsUrls) {
+    console.log('[getFeed] querying PDS:', pdsUrl);
     const agent = new AtpAgent({ service: pdsUrl });
-    const repos = await agent.api.com.atproto.sync.listRepos({ limit: 100 });
+
+    let repos;
+    try {
+      repos = await agent.api.com.atproto.sync.listRepos({ limit: 100 });
+    } catch (err) {
+      console.error('[getFeed] listRepos failed for', pdsUrl, err);
+      continue;
+    }
+
+    console.log('[getFeed] repos found:', repos.data.repos.length, 'on', pdsUrl);
+
     for (const repo of repos.data.repos) {
       try {
         const records = await agent.api.com.atproto.repo.listRecords({
@@ -250,18 +278,37 @@ export async function getFeed(
           collection: PERFORMANCE_LEXICON,
           limit: 50,
         });
+        console.log(
+          '[getFeed]',
+          repo.did,
+          '→',
+          records.data.records.length,
+          'raw performance record(s)'
+        );
+
         for (const item of records.data.records) {
           const record = item.value as unknown as PerformanceRecord;
-          if (record.movement !== movement) continue;
-          if (tranche && record.tranche !== tranche) continue;
+          if (record.movement !== movement) {
+            console.log(
+              '[getFeed] skip',
+              item.uri,
+              `(movement "${record.movement}" ≠ "${movement}")`
+            );
+            continue;
+          }
+          if (tranche && record.tranche !== tranche) {
+            console.log('[getFeed] skip', item.uri, `(tranche "${record.tranche}" ≠ "${tranche}")`);
+            continue;
+          }
           results.push({ uri: item.uri, record, source: pdsUrl });
         }
-      } catch {
-        // repo may not expose this collection
+      } catch (err) {
+        console.warn('[getFeed] listRecords failed for', repo.did, err);
       }
     }
   }
 
+  console.log('[getFeed] matched performances:', results.length);
   return results.sort(
     (a, b) => new Date(b.record.createdAt).getTime() - new Date(a.record.createdAt).getTime()
   );
