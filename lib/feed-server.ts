@@ -1,4 +1,6 @@
 import { getFeed, resolvePeerFromDID } from '@/lib/atproto';
+import { isActiveCategory } from '@/lib/db';
+import { filterFeedItems } from '@/lib/feed-filter';
 import {
   FEED_PAGE_SIZE,
   feedTotalPages,
@@ -9,7 +11,19 @@ import {
 import { pdsUrl, pdsUrls } from '@/lib/upload-agent';
 
 export async function loadFeedPage(movement: string, page: number): Promise<FeedPagePayload> {
-  const all = await getFeed(movement, undefined, pdsUrls());
+  if (!isActiveCategory(movement)) {
+    return {
+      page: 1,
+      pageSize: FEED_PAGE_SIZE,
+      totalPages: 1,
+      total: 0,
+      movement,
+      items: [],
+    };
+  }
+
+  const raw = await getFeed(movement, undefined, pdsUrls());
+  const all = filterFeedItems(raw);
   const total = all.length;
   const totalPages = feedTotalPages(total);
   const safePage = Math.min(Math.max(1, page), totalPages);

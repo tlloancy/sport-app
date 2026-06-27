@@ -15,13 +15,16 @@
   "dependencies": {
     "@atproto/api": "^0.19.19",
     "@atproto/crypto": "^0.4.5",
+    "better-sqlite3": "^12.11.1",
     "hls.js": "^1.6.16",
     "next": "14.2.35",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "resend": "^6.16.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^18",
