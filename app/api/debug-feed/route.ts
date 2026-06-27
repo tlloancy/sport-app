@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getFeed } from '@/lib/atproto';
+import { defaultPdsUrls, getFeed } from '@/lib/atproto';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
-  const pdsUrls = ['http://localhost:2583', 'http://localhost:2584'];
+  const pdsUrls = defaultPdsUrls();
   const logs: string[] = [];
 
   try {

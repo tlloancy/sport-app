@@ -11,8 +11,8 @@ export const PERFORMANCE_LEXICON = 'app.sport.performance' as const;
 export const COMMENT_LEXICON = 'app.sport.comment' as const;
 export const PEER_LEXICON = 'app.sport.peer' as const;
 
-export const DEFAULT_PDS_URL = process.env.PDS_URL ?? 'http://localhost:2583';
-export const DEFAULT_PDS2_URL = process.env.PDS_2_URL ?? 'http://localhost:2584';
+export const DEFAULT_PDS_URL = process.env.PDS_URL ?? 'http://127.0.0.1:2583';
+export const DEFAULT_PDS2_URL = process.env.PDS2_URL ?? 'http://127.0.0.1:2584';
 
 /** Non-empty PDS base URLs for feed / debug queries. */
 export function defaultPdsUrls(): string[] {
