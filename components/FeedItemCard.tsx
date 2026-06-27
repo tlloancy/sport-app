@@ -21,7 +21,7 @@ export default function FeedItemCard({ item }: { item: FeedEntry }) {
           <VideoPlayer
             chunkManifest={item.hashes}
             peers={[item.peerId]}
-            autoPlay={false}
+            viewportAutoplay
             fill
           />
         ) : (
