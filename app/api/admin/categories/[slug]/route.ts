@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin-auth';
 import { softDeleteCategory } from '@/lib/db';
 import { normalizeSlug, validateSlug } from '@/lib/category-validation';
 
 export const runtime = 'nodejs';
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { slug: string } }
 ) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
+
   const slug = normalizeSlug(params.slug);
   const slugError = validateSlug(slug);
   if (slugError) {

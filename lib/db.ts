@@ -127,3 +127,54 @@ export function getModeratedOutUris(): Set<string> {
 export function normalizeMovementSlug(movement: string): string {
   return movement.trim().toLowerCase();
 }
+
+export function listRecentReports(limit = 50): ReportRow[] {
+  return getDb()
+    .prepare(
+      'SELECT id, uri, reason, anon_id, created_at FROM reports ORDER BY id DESC LIMIT ?'
+    )
+    .all(limit) as ReportRow[];
+}
+
+export function getModerationMap(): Map<string, Pick<ModerationRow, 'hidden' | 'deleted'>> {
+  const rows = getDb()
+    .prepare('SELECT uri, hidden, deleted FROM moderation')
+    .all() as Pick<ModerationRow, 'uri' | 'hidden' | 'deleted'>[];
+  return new Map(rows.map((r) => [r.uri, { hidden: r.hidden, deleted: r.deleted }]));
+}
+
+function upsertModeration(uri: string, hidden: number, deleted: number) {
+  const now = new Date().toISOString();
+  getDb()
+    .prepare(
+      `INSERT INTO moderation (uri, hidden, deleted, created_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(uri) DO UPDATE SET hidden = ?, deleted = ?`
+    )
+    .run(uri, hidden, deleted, now, hidden, deleted);
+}
+
+export function hidePerformance(uri: string) {
+  const existing = getModerationMap().get(uri);
+  upsertModeration(uri, 1, existing?.deleted ?? 0);
+}
+
+export function deletePerformance(uri: string) {
+  const existing = getModerationMap().get(uri);
+  upsertModeration(uri, existing?.hidden ?? 0, 1);
+}
+
+export function countReportsSince(anonId: string, sinceIso: string): number {
+  const row = getDb()
+    .prepare(
+      'SELECT COUNT(*) AS count FROM reports WHERE anon_id = ? AND created_at >= ?'
+    )
+    .get(anonId, sinceIso) as { count: number };
+  return row.count;
+}
+
+export function insertReport(uri: string, reason: string | null, anonId: string) {
+  getDb()
+    .prepare('INSERT INTO reports (uri, reason, anon_id, created_at) VALUES (?, ?, ?, ?)')
+    .run(uri, reason, anonId, new Date().toISOString());
+}

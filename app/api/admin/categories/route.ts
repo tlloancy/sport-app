@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin-auth';
+import { listCategoriesForAdmin } from '@/lib/admin-data';
 import { addCategory } from '@/lib/db';
 import {
   normalizeLabel,
@@ -9,7 +11,17 @@ import {
 
 export const runtime = 'nodejs';
 
+export async function GET(req: NextRequest) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
+
+  return NextResponse.json({ categories: listCategoriesForAdmin() });
+}
+
 export async function POST(req: NextRequest) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
+
   let body: { slug?: string; label?: string };
   try {
     body = (await req.json()) as { slug?: string; label?: string };
