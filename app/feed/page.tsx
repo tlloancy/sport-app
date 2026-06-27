@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import FeedItem from '@/components/FeedItem';
 import { getFeed } from '@/lib/atproto';
 import { pdsUrl } from '@/lib/upload-agent';
 import Link from 'next/link';
@@ -18,36 +19,24 @@ export default async function FeedPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Feed — {movement}</h1>
+    <main className="mx-auto min-h-screen max-w-lg px-6 py-10">
+      <header className="mb-8 flex items-baseline justify-between gap-4 border-b border-neutral-200 pb-6">
+        <h1 className="text-xl font-semibold">Feed</h1>
+        <Link href="/" className="text-sm text-neutral-500">
+          Accueil
+        </Link>
+      </header>
+
       {items.length === 0 ? (
-        <p data-testid="feed-empty" className="text-gray-500">
-          No performances yet.
+        <p data-testid="feed-empty" className="text-neutral-500">
+          Aucune performance pour l&apos;instant.
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {items.map(({ uri, record }) => {
-            const rkey = uri.split('/').pop()!;
-            const did = uri.replace(/^at:\/\//, '').split('/')[0]!;
-            return (
-              <li
-                key={uri}
-                data-testid={`feed-item-${rkey}`}
-                className="rounded-lg border p-4"
-              >
-                <Link
-                  href={`/performance/${rkey}?did=${encodeURIComponent(did)}`}
-                  className="font-medium hover:underline"
-                >
-                  {record.movement} — {record.value} {record.unit}
-                </Link>
-                <p className="text-sm text-gray-500">
-                  tranche {record.tranche} · {new Date(record.createdAt).toLocaleString()}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+        <section>
+          {items.map(({ uri, record }) => (
+            <FeedItem key={uri} uri={uri} record={record} />
+          ))}
+        </section>
       )}
     </main>
   );

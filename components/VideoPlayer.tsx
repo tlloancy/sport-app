@@ -6,6 +6,7 @@ import Hls from 'hls.js';
 export interface VideoPlayerProps {
   chunkManifest: string[];
   peers: string[];
+  autoPlay?: boolean;
 }
 
 const SEGMENT_URL = /^https:\/\/chunks\.local\/([a-f0-9]{64})\.ts(?:\?.*)?$/;
@@ -25,7 +26,11 @@ function buildPlaylist(hashes: string[]): string {
   return lines.join('\n');
 }
 
-export default function VideoPlayer({ chunkManifest, peers }: VideoPlayerProps) {
+export default function VideoPlayer({
+  chunkManifest,
+  peers,
+  autoPlay = true,
+}: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,26 +78,28 @@ export default function VideoPlayer({ chunkManifest, peers }: VideoPlayerProps) 
     hls.loadSource(playlistUrl);
     hls.attachMedia(video);
 
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      video.play().catch(() => undefined);
-    });
+    if (autoPlay) {
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => undefined);
+      });
+    }
 
     return () => {
       hls?.destroy();
       if (playlistUrl) URL.revokeObjectURL(playlistUrl);
     };
-  }, [chunkManifest, peers]);
+  }, [chunkManifest, peers, autoPlay]);
 
   return (
-    <div className="w-full max-w-xl">
+    <div className="w-full">
       <video
         ref={videoRef}
         data-testid="video-player"
         controls
         playsInline
         muted
-        autoPlay
-        className="w-full rounded-lg bg-black"
+        autoPlay={autoPlay}
+        className="w-full bg-neutral-900"
       />
       {error ? (
         <p data-testid="player-error" className="mt-2 text-sm text-red-600">

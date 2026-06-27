@@ -5,6 +5,9 @@ import { useState } from 'react';
 
 const UNITS = ['kg', 's', 'm', 'reps'] as const;
 
+const fieldClass =
+  'w-full rounded-md border border-neutral-300 bg-white px-3 py-2.5 text-neutral-900 outline-none focus:border-neutral-900';
+
 export default function UploadClient() {
   const router = useRouter();
   const [movement, setMovement] = useState('snatch');
@@ -17,7 +20,7 @@ export default function UploadClient() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) {
-      setError('Select a video file');
+      setError('Sélectionne une vidéo');
       return;
     }
 
@@ -55,62 +58,53 @@ export default function UploadClient() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex w-full max-w-md flex-col gap-4">
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Video</span>
-        <input
-          data-testid="upload-file"
-          type="file"
-          accept="video/*"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        />
-      </label>
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <input
+        data-testid="upload-file"
+        type="file"
+        accept="video/*"
+        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        className={fieldClass}
+      />
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Mouvement</span>
-        <input
-          data-testid="upload-movement"
-          type="text"
-          value={movement}
-          onChange={(e) => setMovement(e.target.value)}
-          required
-          className="rounded border px-3 py-2"
-        />
-      </label>
+      <input
+        data-testid="upload-movement"
+        type="text"
+        value={movement}
+        onChange={(e) => setMovement(e.target.value)}
+        placeholder="Mouvement"
+        required
+        className={fieldClass}
+      />
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Valeur</span>
-        <input
-          data-testid="upload-value"
-          type="number"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          required
-          className="rounded border px-3 py-2"
-        />
-      </label>
+      <input
+        data-testid="upload-value"
+        type="number"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Valeur"
+        required
+        className={fieldClass}
+      />
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Unité</span>
-        <select
-          data-testid="upload-unit"
-          value={unit}
-          onChange={(e) => setUnit(e.target.value as (typeof UNITS)[number])}
-          className="rounded border px-3 py-2"
-        >
-          {UNITS.map((u) => (
-            <option key={u} value={u}>
-              {u}
-            </option>
-          ))}
-        </select>
-      </label>
+      <select
+        data-testid="upload-unit"
+        value={unit}
+        onChange={(e) => setUnit(e.target.value as (typeof UNITS)[number])}
+        className={fieldClass}
+      >
+        {UNITS.map((u) => (
+          <option key={u} value={u}>
+            {u}
+          </option>
+        ))}
+      </select>
 
       <button
         data-testid="upload-submit"
         type="submit"
         disabled={busy}
-        className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+        className="mt-2 h-11 rounded-md bg-neutral-900 text-sm font-medium text-white disabled:opacity-50"
       >
         {busy ? 'Publication…' : 'Publier'}
       </button>
