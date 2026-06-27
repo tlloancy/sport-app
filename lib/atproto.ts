@@ -242,6 +242,27 @@ async function listAllRepoDids(agent: AtpAgent): Promise<string[]> {
   return dids;
 }
 
+/** Paginate com.atproto.repo.listRecords for one repo + collection. */
+async function listAllRecords(
+  agent: AtpAgent,
+  repo: string,
+  collection: string
+): Promise<Array<{ uri: string; value: unknown }>> {
+  const all: Array<{ uri: string; value: unknown }> = [];
+  let cursor: string | undefined;
+  do {
+    const page = await agent.api.com.atproto.repo.listRecords({
+      repo,
+      collection,
+      limit: 100,
+      cursor,
+    });
+    all.push(...page.data.records);
+    cursor = page.data.cursor;
+  } while (cursor);
+  return all;
+}
+
 export async function getFeed(
   movement: string,
   tranche: string | undefined,
@@ -268,20 +289,16 @@ export async function getFeed(
       log(`Connecting to ${pdsUrl}`);
       const agent = new AtpAgent({ service: pdsUrl });
 
-      const repos = await agent.api.com.atproto.sync.listRepos({ limit: 100 });
-      log(`Found ${repos.data.repos.length} repos on ${pdsUrl}`);
+      const repoDids = await listAllRepoDids(agent);
+      log(`Found ${repoDids.length} repos on ${pdsUrl}`);
 
-      for (const repo of repos.data.repos) {
-        log(`Scanning DID: ${repo.did}`);
+      for (const did of repoDids) {
+        log(`Scanning DID: ${did}`);
         try {
-          const records = await agent.api.com.atproto.repo.listRecords({
-            repo: repo.did,
-            collection: PERFORMANCE_LEXICON,
-            limit: 50,
-          });
-          log(`Found ${records.data.records.length} records for ${repo.did}`);
+          const records = await listAllRecords(agent, did, PERFORMANCE_LEXICON);
+          log(`Found ${records.length} records for ${did} (all pages)`);
 
-          for (const item of records.data.records) {
+          for (const item of records) {
             const record = item.value as unknown as PerformanceRecord;
             if (record.movement !== movement) {
               log(
@@ -298,7 +315,7 @@ export async function getFeed(
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          log(`ERROR listRecords for ${repo.did}: ${message}`);
+          log(`ERROR listRecords for ${did}: ${message}`);
         }
       }
     } catch (err) {
@@ -359,12 +376,8 @@ export async function getComments(
     const agent = new AtpAgent({ service: pdsUrl });
     const repoDids = await listAllRepoDids(agent);
     for (const did of repoDids) {
-      const res = await agent.com.atproto.repo.listRecords({
-        repo: did,
-        collection: COMMENT_LEXICON,
-        limit: 100,
-      });
-      for (const item of res.data.records) {
+      const records = await listAllRecords(agent, did, COMMENT_LEXICON);
+      for (const item of records) {
         const record = item.value as unknown as CommentRecord;
         if (record.performanceUri !== performanceUri) continue;
         all.push({ uri: item.uri, record, source: pdsUrl, authorDid: did });
