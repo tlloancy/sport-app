@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parsePerformanceUri, publishPerformance, type PerformanceRecord } from '@/lib/atproto';
 import { getUploadAgent } from '@/lib/upload-agent';
+import { classifyPublishError, uploadErrorBody } from '@/lib/upload-error';
 
 export const runtime = 'nodejs';
 
@@ -15,13 +16,34 @@ export async function POST(req: NextRequest) {
 
   try {
     body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
+  } catch (err) {
+    const payload = uploadErrorBody(
+      'publish',
+      'invalid_body',
+      'Corps JSON invalide.',
+      400,
+      err instanceof Error ? err.message : undefined
+    );
+    return NextResponse.json(payload, { status: payload.status });
   }
 
   const { movement, value, unit, videoHash, chunkManifest } = body;
-  if (!movement || value == null || !unit || !videoHash || !chunkManifest) {
-    return NextResponse.json({ error: 'missing required fields' }, { status: 400 });
+  const missing: string[] = [];
+  if (!movement) missing.push('movement');
+  if (value == null) missing.push('value');
+  if (!unit) missing.push('unit');
+  if (!videoHash) missing.push('videoHash');
+  if (!chunkManifest) missing.push('chunkManifest');
+
+  if (missing.length > 0) {
+    const payload = uploadErrorBody(
+      'publish',
+      'missing_fields',
+      'Champs obligatoires manquants pour la publication.',
+      400,
+      `Manquants : ${missing.join(', ')}`
+    );
+    return NextResponse.json(payload, { status: payload.status });
   }
 
   try {
@@ -37,7 +59,7 @@ export async function POST(req: NextRequest) {
     const { did, rkey } = parsePerformanceUri(uri);
     return NextResponse.json({ uri, did, rkey });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'publish failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const payload = classifyPublishError(err);
+    return NextResponse.json(payload, { status: payload.status });
   }
 }

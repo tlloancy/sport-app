@@ -4,14 +4,35 @@ import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 import { chunkVideoFile } from '@/lib/chunker';
 import { chunkStorageDir } from '@/lib/p2p-server';
+import { classifyChunkError, uploadErrorBody } from '@/lib/upload-error';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
-  const form = await req.formData();
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch (err) {
+    const body = uploadErrorBody(
+      'chunk',
+      'invalid_body',
+      'Impossible de lire le formulaire d’upload.',
+      400,
+      err instanceof Error ? err.message : undefined
+    );
+    return NextResponse.json(body, { status: body.status });
+  }
+
   const file = form.get('file');
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: 'missing file field' }, { status: 400 });
+    const body = uploadErrorBody(
+      'chunk',
+      'missing_file',
+      'Aucun fichier vidéo reçu.',
+      400,
+      'Le champ multipart « file » est absent ou invalide.'
+    );
+    return NextResponse.json(body, { status: body.status });
   }
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upload-'));
@@ -26,8 +47,8 @@ export async function POST(req: NextRequest) {
       chunkManifest: result.chunkManifest,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'chunk failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const body = classifyChunkError(err);
+    return NextResponse.json(body, { status: body.status });
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

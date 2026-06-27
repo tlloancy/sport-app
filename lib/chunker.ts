@@ -20,7 +20,13 @@ export function chunkVideoFile(inputPath: string, outputDir: string): ChunkResul
       `ffmpeg -y -i "${inputPath}" -c:v libx264 -pix_fmt yuv420p -g 30 -f hls -hls_time 2 -hls_list_size 0 -hls_segment_type mpegts -hls_segment_filename "${tmp}/seg_%03d.ts" "${tmp}/playlist.m3u8"`,
       { stdio: 'pipe' }
     );
+  } catch (err) {
+    const execErr = err as { stderr?: Buffer; message?: string };
+    const stderr = execErr.stderr?.toString('utf8').trim();
+    throw new Error(stderr || execErr.message || 'ffmpeg failed');
+  }
 
+  try {
     const segs = fs.readdirSync(tmp).filter((f) => f.endsWith('.ts')).sort();
     if (segs.length === 0) {
       throw new Error('ffmpeg produced no HLS segments');
