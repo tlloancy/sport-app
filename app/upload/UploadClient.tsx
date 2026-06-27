@@ -305,7 +305,7 @@ export default function UploadClient() {
 
       const chunkData = await uploadChunk(chunkForm, {
         trace: pushTrace,
-        onSendProgress: (ratio, loaded, total) => {
+        onSendProgress: (ratio) => {
           const pct = Math.min(100, Math.round(ratio * 100));
           setSendPct(pct);
           setProgress(Math.min(PHASE_PROGRESS.sendMax, Math.round(ratio * PHASE_PROGRESS.sendMax)));
