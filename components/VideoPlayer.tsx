@@ -7,6 +7,7 @@ export interface VideoPlayerProps {
   chunkManifest: string[];
   peers: string[];
   autoPlay?: boolean;
+  fill?: boolean;
 }
 
 const SEGMENT_URL = /^https:\/\/chunks\.local\/([a-f0-9]{64})\.ts(?:\?.*)?$/;
@@ -30,6 +31,7 @@ export default function VideoPlayer({
   chunkManifest,
   peers,
   autoPlay = true,
+  fill = false,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +93,7 @@ export default function VideoPlayer({
   }, [chunkManifest, peers, autoPlay]);
 
   return (
-    <div className="w-full">
+    <div className={fill ? 'h-full w-full' : 'w-full'}>
       <video
         ref={videoRef}
         data-testid="video-player"
@@ -99,7 +101,7 @@ export default function VideoPlayer({
         playsInline
         muted
         autoPlay={autoPlay}
-        className="w-full bg-neutral-900"
+        className={fill ? 'h-full w-full bg-neutral-900 object-contain' : 'w-full bg-neutral-900'}
       />
       {error ? (
         <p data-testid="player-error" className="mt-2 text-sm text-red-600">

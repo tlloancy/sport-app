@@ -10,19 +10,21 @@ type FeedPaginatorProps = {
   initial: FeedPagePayload;
 };
 
+const SCROLL_EDGE = 12;
+
 function PageIndicator({ page, totalPages }: { page: number; totalPages: number }) {
   return (
     <div
-      className="flex items-center justify-center gap-4 py-5 font-mono text-[11px] uppercase tracking-[0.28em] text-neutral-400"
+      className="pointer-events-none flex items-center justify-center gap-3 font-mono text-[11px] uppercase tracking-[0.28em] text-neutral-500"
       aria-live="polite"
     >
-      <span className="h-px w-12 bg-gradient-to-r from-transparent to-neutral-200" aria-hidden />
-      <span data-testid="feed-page-indicator" className="text-neutral-600">
+      <span className="h-px w-8 bg-neutral-300/80" aria-hidden />
+      <span data-testid="feed-page-indicator">
         <span className="text-neutral-900">{String(page).padStart(2, '0')}</span>
-        <span className="mx-2 text-neutral-300">/</span>
+        <span className="mx-2 text-neutral-400">/</span>
         <span>{String(totalPages).padStart(2, '0')}</span>
       </span>
-      <span className="h-px w-12 bg-gradient-to-l from-transparent to-neutral-200" aria-hidden />
+      <span className="h-px w-8 bg-neutral-300/80" aria-hidden />
     </div>
   );
 }
@@ -32,25 +34,17 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const topSentinelRef = useRef<HTMLDivElement>(null);
-  const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const lockRef = useRef(false);
+  const touchStartY = useRef(0);
   const lastScrollY = useRef(0);
   const scrollDir = useRef<'up' | 'down'>('down');
 
-  useEffect(() => {
-    const onScroll = () => {
-      const y = window.scrollY;
-      scrollDir.current = y > lastScrollY.current ? 'down' : 'up';
-      lastScrollY.current = y;
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  const atScrollTop = () => window.scrollY <= SCROLL_EDGE;
 
   const loadPage = useCallback(
-    async (nextPage: number) => {
+    async (nextPage: number, direction: 'up' | 'down') => {
       if (lockRef.current || nextPage < 1 || nextPage > data.totalPages || nextPage === data.page) {
         return;
       }
@@ -71,9 +65,14 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
         window.history.replaceState(null, '', `/feed?movement=${movement}&page=${nextPage}`);
 
         requestAnimationFrame(() => {
-          if (gridRef.current) {
+          if (direction === 'up') {
+            const max = document.documentElement.scrollHeight - window.innerHeight;
+            window.scrollTo({ top: Math.max(0, max), behavior: 'auto' });
+          } else if (gridRef.current) {
             const top = gridRef.current.getBoundingClientRect().top + window.scrollY - 24;
             window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+          } else {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
           }
         });
       } catch (err) {
@@ -82,42 +81,86 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
         setLoading(false);
         window.setTimeout(() => {
           lockRef.current = false;
-        }, 600);
+        }, 700);
       }
     },
     [data.page, data.totalPages, movement]
   );
 
-  useEffect(() => {
-    const topEl = topSentinelRef.current;
-    const bottomEl = bottomSentinelRef.current;
-    if (!topEl || !bottomEl) return;
+  const tryPageUp = useCallback(() => {
+    if (data.page > 1) void loadPage(data.page - 1, 'up');
+  }, [data.page, loadPage]);
 
-    const topObserver = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (!entry?.isIntersecting || scrollDir.current !== 'up') return;
+  useEffect(() => {
+    document.documentElement.style.scrollSnapType = 'y proximity';
+    return () => {
+      document.documentElement.style.scrollSnapType = '';
+    };
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      scrollDir.current = y > lastScrollY.current ? 'down' : 'up';
+      lastScrollY.current = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (lockRef.current || loading) return;
+
+      if (atScrollTop() && e.deltaY < 0) {
         if (data.page <= 1) return;
-        void loadPage(data.page - 1);
-      },
-      { root: null, rootMargin: '0px', threshold: 0 }
-    );
+        e.preventDefault();
+        tryPageUp();
+      }
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0]?.clientY ?? 0;
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (lockRef.current || loading) return;
+      const endY = e.changedTouches[0]?.clientY ?? touchStartY.current;
+      const delta = endY - touchStartY.current;
+
+      if (atScrollTop() && delta > 48 && data.page > 1) {
+        tryPageUp();
+      }
+    };
+
+    window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [data.page, loading, tryPageUp]);
+
+  useEffect(() => {
+    const bottomEl = bottomSentinelRef.current;
+    if (!bottomEl) return;
 
     const bottomObserver = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
         if (!entry?.isIntersecting || scrollDir.current !== 'down') return;
         if (data.page >= data.totalPages) return;
-        void loadPage(data.page + 1);
+        void loadPage(data.page + 1, 'down');
       },
       { root: null, rootMargin: '120px', threshold: 0 }
     );
 
-    topObserver.observe(topEl);
     bottomObserver.observe(bottomEl);
 
     return () => {
-      topObserver.disconnect();
       bottomObserver.disconnect();
     };
   }, [data.page, data.totalPages, loadPage]);
@@ -125,39 +168,47 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
   const empty = data.total === 0;
 
   return (
-    <>
-      <header className="mb-2 flex items-end justify-between gap-4 border-b border-neutral-200 pb-6">
-        <div>
+    <div className="relative">
+      <header className="pointer-events-none fixed inset-x-0 top-0 z-30 flex items-end justify-between gap-4 bg-gradient-to-b from-white/90 via-white/70 to-transparent px-6 pb-4 pt-5">
+        <div className="pointer-events-auto">
           <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-400">
             Performances
           </p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">Feed</h1>
         </div>
-        <Link href="/" className="text-sm text-neutral-500 transition-colors hover:text-neutral-900">
+        <Link
+          href="/"
+          className="pointer-events-auto text-sm text-neutral-500 transition-colors hover:text-neutral-900"
+        >
           Accueil
         </Link>
       </header>
 
-      {!empty ? <PageIndicator page={data.page} totalPages={data.totalPages} /> : null}
+      {!empty ? (
+        <div className="fixed bottom-6 left-1/2 z-30 -translate-x-1/2 rounded-full border border-neutral-200/80 bg-white/90 px-4 py-2 shadow-sm backdrop-blur-sm">
+          <PageIndicator page={data.page} totalPages={data.totalPages} />
+        </div>
+      ) : null}
 
       {error ? (
-        <p data-testid="feed-error" className="mb-4 text-sm text-red-600">
+        <p
+          data-testid="feed-error"
+          className="fixed left-1/2 top-24 z-30 -translate-x-1/2 text-sm text-red-600"
+        >
           {error}
         </p>
       ) : null}
 
-      <div ref={topSentinelRef} className="h-px w-full" aria-hidden data-testid="feed-sentinel-top" />
-
       {empty ? (
-        <p data-testid="feed-empty" className="py-16 text-center text-neutral-500">
+        <p data-testid="feed-empty" className="flex min-h-[100dvh] items-center justify-center text-neutral-500">
           Aucune performance pour l&apos;instant.
         </p>
       ) : (
         <div
           ref={gridRef}
           data-testid="feed-grid"
-          className={`grid grid-cols-1 gap-5 transition-opacity duration-300 sm:grid-cols-2 ${
-            loading ? 'opacity-40' : 'opacity-100'
+          className={`mx-auto grid max-w-6xl grid-cols-1 snap-y snap-proximity sm:grid-cols-2 ${
+            loading ? 'opacity-50 transition-opacity duration-300' : 'opacity-100'
           }`}
         >
           {data.items.map((item) => (
@@ -173,10 +224,8 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
         data-testid="feed-sentinel-bottom"
       />
 
-      {!empty ? <PageIndicator page={data.page} totalPages={data.totalPages} /> : null}
-
       {!empty && (data.page < data.totalPages || data.page > 1) ? (
-        <p className="pb-10 text-center font-mono text-[10px] uppercase tracking-[0.22em] text-neutral-400">
+        <p className="pointer-events-none fixed bottom-16 left-1/2 z-20 -translate-x-1/2 font-mono text-[10px] uppercase tracking-[0.22em] text-neutral-400">
           {data.page > 1 && data.page < data.totalPages
             ? 'Scroll · navigation par page'
             : data.page < data.totalPages
@@ -184,6 +233,6 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
               : 'Scroll ↑ · page précédente'}
         </p>
       ) : null}
-    </>
+    </div>
   );
 }

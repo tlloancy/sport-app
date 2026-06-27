@@ -14,14 +14,15 @@ export default function FeedItemCard({ item }: { item: FeedEntry }) {
   return (
     <article
       data-testid={`feed-item-${item.rkey}`}
-      className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-[0_12px_40px_-16px_rgba(0,0,0,0.15)]"
+      className="group flex h-[100dvh] snap-start flex-col overflow-hidden border-neutral-200/60 bg-white sm:border-r sm:last:border-r-0"
     >
-      <div className="aspect-video w-full overflow-hidden bg-neutral-950">
+      <div className="relative min-h-0 flex-1 bg-neutral-950">
         {item.hashes.length > 0 ? (
           <VideoPlayer
             chunkManifest={item.hashes}
             peers={[item.peerId]}
             autoPlay={false}
+            fill
           />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-neutral-500">
@@ -29,7 +30,7 @@ export default function FeedItemCard({ item }: { item: FeedEntry }) {
           </div>
         )}
       </div>
-      <header className="border-t border-neutral-100 px-4 py-3">
+      <header className="shrink-0 border-t border-neutral-100 bg-white/95 px-4 py-3 backdrop-blur-sm">
         <h2 className="text-sm font-medium tracking-tight text-neutral-900">
           {item.record.movement}
           <span className="mx-1.5 text-neutral-300">·</span>

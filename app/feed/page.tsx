@@ -35,14 +35,10 @@ export default async function FeedPage({
   }
 
   return (
-    <main className="relative mx-auto min-h-screen max-w-5xl px-6 py-10">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-neutral-100/80 to-transparent"
-        aria-hidden
-      />
+    <main className="min-h-[100dvh] bg-white">
       {feedError ? (
-        <>
-          <header className="relative mb-8 border-b border-neutral-200 pb-6">
+        <div className="mx-auto max-w-5xl px-6 py-10">
+          <header className="mb-8 border-b border-neutral-200 pb-6">
             <h1 className="text-xl font-semibold tracking-tight">Feed</h1>
           </header>
           <p data-testid="feed-error" className="text-sm text-red-600">
@@ -51,11 +47,9 @@ export default async function FeedPage({
           <Link href="/" className="mt-6 inline-block text-sm text-neutral-500">
             Accueil
           </Link>
-        </>
-      ) : (
-        <div className="relative">
-          <FeedPaginator movement={movement} initial={initial} />
         </div>
+      ) : (
+        <FeedPaginator movement={movement} initial={initial} />
       )}
     </main>
   );
