@@ -1,6 +1,7 @@
 import { AtpAgent } from '@atproto/api';
+import { DEFAULT_PDS_URL } from '@/lib/atproto';
 
-const PDS_URL = process.env.PDS_URL ?? 'http://localhost:2583';
+const PDS_URL = DEFAULT_PDS_URL;
 const UPLOAD_HANDLE = process.env.UPLOAD_HANDLE ?? 'uploader.test';
 const UPLOAD_PASSWORD = process.env.UPLOAD_PASSWORD ?? 'upload-test-pass';
 

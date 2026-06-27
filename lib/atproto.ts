@@ -11,6 +11,8 @@ export const PERFORMANCE_LEXICON = 'app.sport.performance' as const;
 export const COMMENT_LEXICON = 'app.sport.comment' as const;
 export const PEER_LEXICON = 'app.sport.peer' as const;
 
+export const DEFAULT_PDS_URL = process.env.PDS_URL ?? 'http://localhost:2583';
+
 const DEFAULT_PDS_ACTOR_STORE =
   process.env.PDS_ACTOR_STORE ?? '/var/lib/docker/volumes/pds_local_data/_data/actors';
 
@@ -219,30 +221,16 @@ export async function resolvePeerFromDID(did: string, pdsUrl: string): Promise<s
   return latest[0]?.peerId ?? null;
 }
 
-async function listRepoDidsOnPds(agent: AtpAgent, collection: string): Promise<string[]> {
+/** List every repo DID on a PDS (local v0.5.x has sync.listRepos, not listReposByCollection). */
+async function listAllRepoDids(agent: AtpAgent): Promise<string[]> {
   const dids: string[] = [];
-  try {
-    let cursor: string | undefined;
-    do {
-      const listed = await agent.com.atproto.sync.listReposByCollection({
-        collection,
-        limit: 100,
-        cursor,
-      });
-      dids.push(...listed.data.repos.map((repo) => repo.did));
-      cursor = listed.data.cursor;
-    } while (cursor);
-    return dids;
-  } catch {
-    // Dev-only fallback: local PDS v0.5.6 exposes listRepos but not listReposByCollection.
-    let cursor: string | undefined;
-    do {
-      const listed = await agent.com.atproto.sync.listRepos({ limit: 100, cursor });
-      dids.push(...listed.data.repos.map((repo) => repo.did));
-      cursor = listed.data.cursor;
-    } while (cursor);
-    return dids;
-  }
+  let cursor: string | undefined;
+  do {
+    const listed = await agent.com.atproto.sync.listRepos({ limit: 100, cursor });
+    dids.push(...listed.data.repos.map((repo) => repo.did));
+    cursor = listed.data.cursor;
+  } while (cursor);
+  return dids;
 }
 
 export async function getFeed(
@@ -254,7 +242,7 @@ export async function getFeed(
 
   for (const pdsUrl of pdsUrls) {
     const agent = new AtpAgent({ service: pdsUrl });
-    const repoDids = await listRepoDidsOnPds(agent, PERFORMANCE_LEXICON);
+    const repoDids = await listAllRepoDids(agent);
     for (const did of repoDids) {
       const res = await agent.com.atproto.repo.listRecords({
         repo: did,
@@ -319,7 +307,7 @@ export async function getComments(
 
   for (const pdsUrl of pdsUrls) {
     const agent = new AtpAgent({ service: pdsUrl });
-    const repoDids = await listRepoDidsOnPds(agent, COMMENT_LEXICON);
+    const repoDids = await listAllRepoDids(agent);
     for (const did of repoDids) {
       const res = await agent.com.atproto.repo.listRecords({
         repo: did,
