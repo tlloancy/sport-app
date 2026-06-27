@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   errorOrigin,
   errorTypeLabel,
@@ -13,11 +14,17 @@ import {
 
 const UNITS = ['kg', 's', 'm', 'reps'] as const;
 const CHUNK_PROGRESS_MAX = 70;
+const REDIRECT_DELAY_MS = 2000;
 
 const fieldClass =
   'w-full rounded-md border border-neutral-300 bg-white px-3 py-2.5 text-neutral-900 outline-none focus:border-neutral-900';
 
 type Phase = 'idle' | 'upload' | 'publish' | 'done';
+
+type PublishedPerformance = {
+  did: string;
+  rkey: string;
+};
 
 type ChunkResponse = {
   videoHash: string;
@@ -97,8 +104,13 @@ function stepLabel(step: UploadErrorPayload['step']): string {
   return step === 'chunk' ? 'Envoi vidéo' : 'Publication ATProto';
 }
 
+function performanceHref({ did, rkey }: PublishedPerformance): string {
+  return `/performance/${rkey}?did=${encodeURIComponent(did)}`;
+}
+
 export default function UploadClient() {
   const router = useRouter();
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [movement, setMovement] = useState('snatch');
   const [value, setValue] = useState('35');
   const [unit, setUnit] = useState<(typeof UNITS)[number]>('kg');
@@ -108,20 +120,46 @@ export default function UploadClient() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [progress, setProgress] = useState(0);
   const [uploadPct, setUploadPct] = useState(0);
+  const [published, setPublished] = useState<PublishedPerformance | null>(null);
+
+  const inProgress = phase === 'upload' || phase === 'publish';
+
+  useEffect(() => {
+    if (!inProgress) return;
+
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [inProgress]);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimer.current) clearTimeout(redirectTimer.current);
+    };
+  }, []);
 
   function buttonLabel() {
-    if (!busy) return 'Publier';
     if (phase === 'done') return 'Publié !';
+    if (!busy) return 'Publier';
     if (phase === 'publish') return 'Publication...';
     return `Upload ${uploadPct}%...`;
   }
 
   function fail(info: UploadErrorPayload) {
+    if (redirectTimer.current) {
+      clearTimeout(redirectTimer.current);
+      redirectTimer.current = null;
+    }
     setError(info);
     setBusy(false);
     setPhase('idle');
     setProgress(0);
     setUploadPct(0);
+    setPublished(null);
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -136,8 +174,14 @@ export default function UploadClient() {
       return;
     }
 
+    if (redirectTimer.current) {
+      clearTimeout(redirectTimer.current);
+      redirectTimer.current = null;
+    }
+
     setBusy(true);
     setError(null);
+    setPublished(null);
     setPhase('upload');
     setProgress(0);
     setUploadPct(0);
@@ -189,12 +233,15 @@ export default function UploadClient() {
         return;
       }
 
+      const result = { did: pubData.did, rkey: pubData.rkey };
       setProgress(100);
       setPhase('done');
+      setPublished(result);
+      setBusy(false);
 
-      router.push(
-        `/performance/${pubData.rkey}?did=${encodeURIComponent(pubData.did)}`
-      );
+      redirectTimer.current = setTimeout(() => {
+        router.push(performanceHref(result));
+      }, REDIRECT_DELAY_MS);
     } catch (err) {
       if (err instanceof UploadFailure) {
         fail(err.info);
@@ -260,7 +307,17 @@ export default function UploadClient() {
         ))}
       </select>
 
-      {busy ? (
+      {inProgress ? (
+        <p
+          data-testid="upload-stay-warning"
+          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          role="status"
+        >
+          Ne quitte pas cette page pendant la publication.
+        </p>
+      ) : null}
+
+      {busy || phase === 'done' ? (
         <div
           data-testid="upload-progress"
           className="flex items-center gap-3"
@@ -283,7 +340,38 @@ export default function UploadClient() {
       ) : null}
 
       {phase === 'publish' ? (
-        <p className="text-sm text-neutral-500">Publication en cours...</p>
+        <div
+          data-testid="upload-publish-status"
+          className="flex items-center gap-2 text-sm text-neutral-700"
+          role="status"
+        >
+          <span
+            data-testid="upload-publish-spinner"
+            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900"
+            aria-hidden
+          />
+          Publication sur ATProto...
+        </div>
+      ) : null}
+
+      {phase === 'done' && published ? (
+        <div
+          data-testid="upload-success"
+          className="rounded-md border border-green-200 bg-green-50 px-3 py-3 text-sm text-green-900"
+          role="status"
+        >
+          <p className="font-medium" data-testid="upload-success-message">
+            Publié !
+          </p>
+          <Link
+            data-testid="upload-success-link"
+            href={performanceHref(published)}
+            className="mt-2 inline-block underline"
+          >
+            Voir la performance
+          </Link>
+          <p className="mt-1 text-xs text-green-800">Redirection automatique dans 2 secondes…</p>
+        </div>
       ) : null}
 
       <button

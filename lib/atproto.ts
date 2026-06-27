@@ -226,7 +226,7 @@ async function listAllRepoDids(agent: AtpAgent): Promise<string[]> {
   const dids: string[] = [];
   let cursor: string | undefined;
   do {
-    const listed = await agent.com.atproto.sync.listRepos({ limit: 100, cursor });
+    const listed = await agent.api.com.atproto.sync.listRepos({ limit: 100, cursor });
     dids.push(...listed.data.repos.map((repo) => repo.did));
     cursor = listed.data.cursor;
   } while (cursor);
@@ -238,27 +238,31 @@ export async function getFeed(
   tranche: string | undefined,
   pdsUrls: string[]
 ): Promise<Array<{ uri: string; record: PerformanceRecord; source: string }>> {
-  const all: Array<{ uri: string; record: PerformanceRecord; source: string }> = [];
+  const results: Array<{ uri: string; record: PerformanceRecord; source: string }> = [];
 
   for (const pdsUrl of pdsUrls) {
     const agent = new AtpAgent({ service: pdsUrl });
-    const repoDids = await listAllRepoDids(agent);
-    for (const did of repoDids) {
-      const res = await agent.com.atproto.repo.listRecords({
-        repo: did,
-        collection: PERFORMANCE_LEXICON,
-        limit: 100,
-      });
-      for (const item of res.data.records) {
-        const record = item.value as unknown as PerformanceRecord;
-        if (record.movement !== movement) continue;
-        if (tranche && record.tranche !== tranche) continue;
-        all.push({ uri: item.uri, record, source: pdsUrl });
+    const repos = await agent.api.com.atproto.sync.listRepos({ limit: 100 });
+    for (const repo of repos.data.repos) {
+      try {
+        const records = await agent.api.com.atproto.repo.listRecords({
+          repo: repo.did,
+          collection: PERFORMANCE_LEXICON,
+          limit: 50,
+        });
+        for (const item of records.data.records) {
+          const record = item.value as unknown as PerformanceRecord;
+          if (record.movement !== movement) continue;
+          if (tranche && record.tranche !== tranche) continue;
+          results.push({ uri: item.uri, record, source: pdsUrl });
+        }
+      } catch {
+        // repo may not expose this collection
       }
     }
   }
 
-  return all.sort(
+  return results.sort(
     (a, b) => new Date(b.record.createdAt).getTime() - new Date(a.record.createdAt).getTime()
   );
 }
