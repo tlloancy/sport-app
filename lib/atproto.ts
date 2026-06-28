@@ -5,8 +5,8 @@ import { AtpAgent } from '@atproto/api';
 import { getSigningDidKey, isValidDidDoc, type DidDocument } from '@atproto/common-web';
 import { Secp256k1Keypair, verifySignature } from '@atproto/crypto';
 import { verifySig } from '@atproto/crypto/dist/secp256k1/operations.js';
-import { normalizeMovement } from '@/lib/db';
-import { compareMetricValues, type MetricType, type MetricUnit } from '@/lib/metrics';
+import { normalizeMovement, getActiveDisciplineSlugs } from '@/lib/db';
+import { compareMetricValues, isMetricType, type MetricType, type MetricUnit } from '@/lib/metrics';
 
 export const PERFORMANCE_LEXICON = 'app.sport.performance' as const;
 export const COMMENT_LEXICON = 'app.sport.comment' as const;
@@ -239,6 +239,117 @@ async function listAllRepoDids(agent: AtpAgent): Promise<string[]> {
   return dids;
 }
 
+async function resolvePublisherDid(): Promise<string | null> {
+  const fromEnv = process.env.UPLOAD_DID?.trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const { getUploadAgent } = await import('@/lib/upload-agent');
+    const agent = await getUploadAgent();
+    return agent.session?.did ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Repos that may contain performance records — indexed scan, full scan, publisher fallback. */
+async function collectPerformanceRepoDids(
+  agent: AtpAgent,
+  logs?: string[]
+): Promise<string[]> {
+  const log = (message: string) => logs?.push(message);
+  const dids = new Set<string>();
+
+  try {
+    let cursor: string | undefined;
+    do {
+      const page = await agent.api.com.atproto.sync.listReposByCollection({
+        collection: PERFORMANCE_LEXICON,
+        limit: 100,
+        cursor,
+      });
+      for (const repo of page.data.repos ?? []) {
+        if (repo.did) dids.add(repo.did);
+      }
+      cursor = page.data.cursor;
+    } while (cursor);
+    log(`listReposByCollection: ${dids.size} repo(s)`);
+  } catch (err) {
+    log(
+      `listReposByCollection failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  if (dids.size === 0) {
+    try {
+      for (const did of await listAllRepoDids(agent)) {
+        dids.add(did);
+      }
+      log(`listRepos fallback: ${dids.size} repo(s)`);
+    } catch (err) {
+      log(`listRepos failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const publisherDid = await resolvePublisherDid();
+  if (publisherDid) {
+    dids.add(publisherDid);
+    log(`publisher DID included: ${publisherDid}`);
+  }
+
+  return Array.from(dids);
+}
+
+function coercePerformanceRecord(value: unknown): PerformanceRecord | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+
+  const movementRaw = typeof raw.movement === 'string' ? raw.movement.trim() : '';
+  if (!movementRaw) return null;
+
+  const videoHash = typeof raw.videoHash === 'string' ? raw.videoHash : '';
+  const createdAt = typeof raw.createdAt === 'string' ? raw.createdAt : '';
+  if (!videoHash || !createdAt) return null;
+
+  const activeDisciplines = getActiveDisciplineSlugs();
+  let discipline =
+    typeof raw.discipline === 'string' ? raw.discipline.trim().toLowerCase() : '';
+  let movement = movementRaw;
+
+  // Legacy flat category: movement field was the discipline slug (e.g. "snatch").
+  if (!discipline && activeDisciplines.has(movementRaw.toLowerCase())) {
+    discipline = movementRaw.toLowerCase();
+    movement = movementRaw.toLowerCase();
+  }
+
+  if (!discipline || !activeDisciplines.has(discipline)) return null;
+
+  const metricTypeRaw = typeof raw.metricType === 'string' ? raw.metricType : 'weight';
+  const metricType: MetricType = isMetricType(metricTypeRaw) ? metricTypeRaw : 'weight';
+  const family = typeof raw.family === 'string' ? raw.family.trim().toLowerCase() : 'sport';
+
+  const record: PerformanceRecord = {
+    family,
+    discipline,
+    movement,
+    metricType,
+    videoHash,
+    createdAt,
+  };
+
+  if (typeof raw.chunkManifest === 'string') {
+    record.chunkManifest = raw.chunkManifest;
+  }
+
+  if (metricType !== 'none' && typeof raw.value === 'number') {
+    record.value = raw.value;
+    if (typeof raw.unit === 'string') {
+      record.unit = raw.unit as MetricUnit;
+    }
+  }
+
+  return record;
+}
+
 /** Paginate com.atproto.repo.listRecords for one repo + collection. */
 async function listAllRecords(
   agent: AtpAgent,
@@ -289,8 +400,8 @@ export async function getFeed(
       log(`Connecting to ${pdsUrl}`);
       const agent = new AtpAgent({ service: pdsUrl });
 
-      const repoDids = await listAllRepoDids(agent);
-      log(`Found ${repoDids.length} repos on ${pdsUrl}`);
+      const repoDids = await collectPerformanceRepoDids(agent, logs);
+      log(`Scanning ${repoDids.length} repo(s) on ${pdsUrl}`);
 
       for (const did of repoDids) {
         log(`Scanning DID: ${did}`);
@@ -299,8 +410,8 @@ export async function getFeed(
           log(`Found ${records.length} records for ${did} (all pages)`);
 
           for (const item of records) {
-            const record = item.value as unknown as PerformanceRecord;
-            if (!record.discipline || !record.movement) {
+            const record = coercePerformanceRecord(item.value);
+            if (!record) {
               log(`Skip ${item.uri}: record format invalide`);
               continue;
             }
@@ -356,10 +467,12 @@ export async function getPerformancesByDid(
       const agent = new AtpAgent({ service: pdsUrl });
       const records = await listAllRecords(agent, did, PERFORMANCE_LEXICON);
       for (const item of records) {
+        const record = coercePerformanceRecord(item.value);
+        if (!record) continue;
         results.push({
           uri: item.uri,
           rkey: item.uri.split('/').pop()!,
-          record: item.value as unknown as PerformanceRecord,
+          record,
           source: pdsUrl,
         });
       }
