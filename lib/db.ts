@@ -58,6 +58,14 @@ function initSchema(database: Database.Database) {
       score REAL NOT NULL DEFAULT 1000,
       vote_count INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS elo_votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      winner_uri TEXT NOT NULL,
+      loser_uri TEXT NOT NULL,
+      anon_id TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
 }
 
@@ -185,6 +193,14 @@ export type EloScoreRow = {
   vote_count: number;
 };
 
+export type EloVoteRow = {
+  id: number;
+  winner_uri: string;
+  loser_uri: string;
+  anon_id: string;
+  created_at: string;
+};
+
 export function getEloScore(uri: string): EloScoreRow {
   const row = getDb()
     .prepare('SELECT uri, score, vote_count FROM elo_scores WHERE uri = ?')
@@ -208,6 +224,37 @@ export function getEloScoresForUris(uris: string[]): Map<string, EloScoreRow> {
     map.set(row.uri, row);
   }
   return map;
+}
+
+export function upsertEloScore(uri: string, score: number, voteCount: number): void {
+  getDb()
+    .prepare(
+      `INSERT INTO elo_scores (uri, score, vote_count)
+       VALUES (?, ?, ?)
+       ON CONFLICT(uri) DO UPDATE SET score = ?, vote_count = ?`
+    )
+    .run(uri, score, voteCount, score, voteCount);
+}
+
+export function insertEloVote(
+  winnerUri: string,
+  loserUri: string,
+  anonId: string
+): void {
+  getDb()
+    .prepare(
+      'INSERT INTO elo_votes (winner_uri, loser_uri, anon_id, created_at) VALUES (?, ?, ?, ?)'
+    )
+    .run(winnerUri, loserUri, anonId, new Date().toISOString());
+}
+
+export function countVotesSince(anonId: string, sinceIso: string): number {
+  const row = getDb()
+    .prepare(
+      'SELECT COUNT(*) AS count FROM elo_votes WHERE anon_id = ? AND created_at >= ?'
+    )
+    .get(anonId, sinceIso) as { count: number };
+  return row.count;
 }
 
 export function insertReport(uri: string, reason: string | null, anonId: string) {

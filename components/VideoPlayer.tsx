@@ -9,6 +9,7 @@ export interface VideoPlayerProps {
   peers: string[];
   autoPlay?: boolean;
   fill?: boolean;
+  loop?: boolean;
   /** Play when entering viewport, pause when leaving. Uses rootMargin for early start. */
   viewportAutoplay?: boolean;
 }
@@ -37,6 +38,7 @@ export default function VideoPlayer({
   peers,
   autoPlay = true,
   fill = false,
+  loop = false,
   viewportAutoplay = false,
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -172,6 +174,7 @@ export default function VideoPlayer({
         controls
         playsInline
         muted
+        loop={loop}
         preload={wantsPlayback ? 'auto' : 'metadata'}
         autoPlay={autoPlay && !viewportAutoplay}
         className={fill ? 'h-full w-full bg-neutral-900 object-contain' : 'w-full bg-neutral-900'}
