@@ -1,11 +1,11 @@
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-export const MAX_UPLOAD_DURATION_SEC = 60;
+export const MAX_UPLOAD_DURATION_SEC = 90;
 
 export const UPLOAD_LIMITS_MESSAGE =
-  'Vidéo trop longue (max 60s) ou trop lourde (max 50MB)';
+  `Vidéo trop longue (max ${MAX_UPLOAD_DURATION_SEC}s) ou trop lourde (max 50MB)`;
 
 export const UPLOAD_RULES = [
-  '⏱ Max 60 s',
+  `⏱ Max ${MAX_UPLOAD_DURATION_SEC} s`,
   '📦 Max 50 Mo',
   'Vidéo MP4, MOV, WebM…',
 ] as const;
