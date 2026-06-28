@@ -1,5 +1,6 @@
 'use client';
 
+import { ensureP2pWasm, fetchChunkViaWasm } from '@/lib/p2p-wasm-client';
 import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 
@@ -41,6 +42,8 @@ export default function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const shouldPlayRef = useRef(false);
+  const wasmReadyRef = useRef(false);
+  const blobUrlsRef = useRef<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -88,6 +91,7 @@ export default function VideoPlayer({
 
     let hls: Hls | null = null;
     let playlistUrl: string | null = null;
+    let cancelled = false;
     const peerList = peers.join(',');
 
     setReady(false);
@@ -98,48 +102,64 @@ export default function VideoPlayer({
       return undefined;
     }
 
-    hls = new Hls({
-      enableWorker: false,
-      xhrSetup: (xhr, url) => {
-        const match = url.match(SEGMENT_URL);
-        if (match) {
-          const qs = new URLSearchParams({ hash: match[1]!, peers: peerList });
-          xhr.open('GET', `/api/p2p/chunk?${qs}`, true);
-        }
-      },
-      fetchSetup: (context, initParams) => {
-        const match = context.url.match(SEGMENT_URL);
-        if (match) {
-          const qs = new URLSearchParams({ hash: match[1]!, peers: peerList });
+    const setup = async () => {
+      wasmReadyRef.current = await ensureP2pWasm();
+      if (cancelled) return;
+
+      hls = new Hls({
+        enableWorker: false,
+        fetchSetup: async (context, initParams) => {
+          const match = context.url.match(SEGMENT_URL);
+          if (!match) {
+            return new Request(context.url, initParams);
+          }
+
+          const hash = match[1]!;
+          if (wasmReadyRef.current) {
+            const buf = await fetchChunkViaWasm(hash, peers);
+            if (buf) {
+              const blobUrl = URL.createObjectURL(new Blob([buf], { type: 'video/mp2t' }));
+              blobUrlsRef.current.push(blobUrl);
+              return new Request(blobUrl, initParams);
+            }
+          }
+
+          const qs = new URLSearchParams({ hash, peers: peerList });
           return new Request(`/api/p2p/chunk?${qs}`, initParams);
+        },
+      });
+
+      hls.on(Hls.Events.ERROR, (_e, data) => {
+        if (data.fatal) {
+          setError(`${data.type}: ${data.details}`);
         }
-        return new Request(context.url, initParams);
-      },
-    });
+      });
 
-    hls.on(Hls.Events.ERROR, (_e, data) => {
-      if (data.fatal) {
-        setError(`${data.type}: ${data.details}`);
-      }
-    });
+      playlistUrl = URL.createObjectURL(
+        new Blob([buildPlaylist(chunkManifest)], { type: 'application/vnd.apple.mpegurl' })
+      );
+      hls.loadSource(playlistUrl);
+      hls.attachMedia(video);
 
-    playlistUrl = URL.createObjectURL(
-      new Blob([buildPlaylist(chunkManifest)], { type: 'application/vnd.apple.mpegurl' })
-    );
-    hls.loadSource(playlistUrl);
-    hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        setReady(true);
+        const playNow = autoPlay || (viewportAutoplay && shouldPlayRef.current);
+        if (playNow) {
+          video.play().catch(() => undefined);
+        }
+      });
+    };
 
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      setReady(true);
-      const playNow = autoPlay || (viewportAutoplay && shouldPlayRef.current);
-      if (playNow) {
-        video.play().catch(() => undefined);
-      }
-    });
+    void setup();
 
     return () => {
+      cancelled = true;
       hls?.destroy();
       if (playlistUrl) URL.revokeObjectURL(playlistUrl);
+      for (const url of blobUrlsRef.current) {
+        URL.revokeObjectURL(url);
+      }
+      blobUrlsRef.current = [];
       setReady(false);
     };
   }, [chunkManifest, peers, autoPlay, viewportAutoplay]);

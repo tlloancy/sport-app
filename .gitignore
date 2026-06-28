@@ -44,3 +44,6 @@ next-env.d.ts
 /public/test-player/chunks/*.ts
 /tmp-hls-*
 /.tmp-hls-*
+
+# next build output (rebuild via npm run build)
+/.next/

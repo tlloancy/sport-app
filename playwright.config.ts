@@ -9,7 +9,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      'bash scripts/gen_player_fixtures.sh && P2P_TEST_MODE=1 npm run build && P2P_TEST_MODE=1 npm run start -- --hostname 127.0.0.1 --port 3000',
+      'bash scripts/gen_player_fixtures.sh && P2P_TEST_MODE=1 NEXT_PUBLIC_P2P_WASM_DISABLED=1 npm run build && P2P_TEST_MODE=1 NEXT_PUBLIC_P2P_WASM_DISABLED=1 npm run start -- --hostname 127.0.0.1 --port 3000',
     url: 'http://127.0.0.1:3000/performance/test',
     reuseExistingServer: true,
     timeout: 600_000,
