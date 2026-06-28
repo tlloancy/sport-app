@@ -7,9 +7,8 @@ type CoreP2pModule = {
   core_p2p_wasm_version?: () => string;
 };
 
-const WASM_BASE = '/core-p2p';
-const WASM_JS = `${WASM_BASE}/core_p2p.js`;
-const WASM_BIN = `${WASM_BASE}/core_p2p_bg.wasm`;
+const WASM_JS = '/api/wasm/core_p2p.js';
+const WASM_BIN = '/api/wasm/core_p2p_bg.wasm';
 
 let modulePromise: Promise<CoreP2pModule | null> | null = null;
 let localPeerId: string | null = null;

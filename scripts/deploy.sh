@@ -24,4 +24,4 @@ pm2 restart sport-app
 
 echo "Deploy OK — $(date)"
 echo "P2P native: curl -s http://127.0.0.1:3000/api/p2p/status"
-echo "P2P WASM: $ROOT/sport-app/public/core-p2p/"
+echo "P2P WASM: curl -I http://127.0.0.1:3000/api/wasm/core_p2p_bg.wasm"

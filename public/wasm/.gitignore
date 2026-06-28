@@ -1,0 +1,5 @@
+# Generated at deploy — not committed
+*.wasm
+core_p2p.js
+core_p2p.d.ts
+!README.md
