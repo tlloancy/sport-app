@@ -17,12 +17,12 @@ export interface VideoPlayerProps {
 const VIEWPORT_ROOT_MARGIN = '18% 0px';
 const VIEWPORT_PLAY_RATIO = 0.22;
 
-function chunkSegmentUrl(hash: string, peerList: string): string {
+function chunkSegmentUrl(hash: string, peerList: string, origin: string): string {
   const qs = new URLSearchParams({ hash, peers: peerList });
-  return `/api/p2p/chunk?${qs}`;
+  return `${origin}/api/p2p/chunk?${qs}`;
 }
 
-function buildPlaylist(hashes: string[], peerList: string): string {
+function buildPlaylist(hashes: string[], peerList: string, origin: string): string {
   const lines = [
     '#EXTM3U',
     '#EXT-X-VERSION:3',
@@ -31,7 +31,7 @@ function buildPlaylist(hashes: string[], peerList: string): string {
   ];
   for (const hash of hashes) {
     lines.push('#EXTINF:2.0,');
-    lines.push(chunkSegmentUrl(hash, peerList));
+    lines.push(chunkSegmentUrl(hash, peerList, origin));
   }
   lines.push('#EXT-X-ENDLIST');
   return lines.join('\n');
@@ -149,7 +149,7 @@ export default function VideoPlayer({
     });
 
     playlistUrl = URL.createObjectURL(
-      new Blob([buildPlaylist(chunkManifest, peerList)], {
+      new Blob([buildPlaylist(chunkManifest, peerList, window.location.origin)], {
         type: 'application/vnd.apple.mpegurl',
       })
     );
