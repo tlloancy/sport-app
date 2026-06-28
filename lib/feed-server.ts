@@ -12,18 +12,19 @@ import {
 import { pdsUrl, pdsUrls } from '@/lib/upload-agent';
 
 export async function loadFeedPage(movement: string, page: number): Promise<FeedPagePayload> {
-  if (!isActiveCategory(movement)) {
+  const slug = movement.trim().toLowerCase();
+  if (!isActiveCategory(slug)) {
     return {
       page: 1,
       pageSize: FEED_PAGE_SIZE,
       totalPages: 1,
       total: 0,
-      movement,
+      movement: slug,
       items: [],
     };
   }
 
-  const raw = await getFeed(movement, undefined, pdsUrls());
+  const raw = await getFeed(slug, undefined, pdsUrls());
   const all = filterFeedItems(raw);
   const total = all.length;
   const totalPages = feedTotalPages(total);
@@ -64,7 +65,7 @@ export async function loadFeedPage(movement: string, page: number): Promise<Feed
     pageSize: FEED_PAGE_SIZE,
     totalPages,
     total,
-    movement,
+    movement: slug,
     items,
   };
 }

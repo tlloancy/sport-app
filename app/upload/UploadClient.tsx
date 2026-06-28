@@ -30,6 +30,7 @@ import {
 } from '@/lib/upload-limits';
 
 const UNITS = ['kg', 's', 'm', 'reps'] as const;
+const OTHER_MOVEMENT = '__other__';
 const REDIRECT_DELAY_MS = 1000;
 
 const fieldClass =
@@ -202,7 +203,9 @@ export default function UploadClient() {
   const router = useRouter();
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const traceRef = useRef<TraceEntry[]>([]);
-  const [movement, setMovement] = useState('snatch');
+  const [movementSelect, setMovementSelect] = useState('snatch');
+  const [customMovement, setCustomMovement] = useState('');
+  const [categories, setCategories] = useState<Array<{ slug: string; label: string }>>([]);
   const [value, setValue] = useState('35');
   const [unit, setUnit] = useState<(typeof UNITS)[number]>('kg');
   const [file, setFile] = useState<File | null>(null);
@@ -220,6 +223,23 @@ export default function UploadClient() {
   const [fileCheckMessage, setFileCheckMessage] = useState<string | null>(null);
 
   const inProgress = phase === 'send' || phase === 'ffmpeg' || phase === 'publish';
+
+  const movement =
+    movementSelect === OTHER_MOVEMENT ? customMovement.trim() : movementSelect;
+
+  useEffect(() => {
+    void fetch('/api/categories')
+      .then((res) => res.json())
+      .then((data: { categories?: Array<{ slug: string; label: string }> }) => {
+        const list = data.categories ?? [];
+        setCategories(list);
+        if (list.length > 0 && !list.some((c) => c.slug === movementSelect)) {
+          setMovementSelect(list[0]!.slug);
+        }
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial slug only
+  }, []);
 
   const pushTrace = useCallback(
     (tag: string, message: string, opts?: { detail?: string; level?: TraceLevel }) => {
@@ -328,6 +348,16 @@ export default function UploadClient() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!movement) {
+      fail({
+        error: 'Indique un mouvement avant de publier.',
+        type: 'missing_file',
+        step: 'chunk',
+        status: 400,
+      });
+      return;
+    }
+
     if (!file) {
       fail({
         error: 'Sélectionne une vidéo avant de publier.',
@@ -538,16 +568,37 @@ export default function UploadClient() {
         </p>
       ) : null}
 
-      <input
+      <select
         data-testid="upload-movement"
-        type="text"
-        value={movement}
-        onChange={(e) => setMovement(e.target.value)}
-        placeholder="Mouvement"
+        value={movementSelect}
+        onChange={(e) => setMovementSelect(e.target.value)}
         required
         disabled={busy}
         className={fieldClass}
-      />
+      >
+        {categories.map((c) => (
+          <option key={c.slug} value={c.slug}>
+            {c.label}
+          </option>
+        ))}
+        {categories.length === 0 ? (
+          <option value="snatch">Snatch</option>
+        ) : null}
+        <option value={OTHER_MOVEMENT}>Autre…</option>
+      </select>
+
+      {movementSelect === OTHER_MOVEMENT ? (
+        <input
+          data-testid="upload-movement-custom"
+          type="text"
+          value={customMovement}
+          onChange={(e) => setCustomMovement(e.target.value)}
+          placeholder="Nom du mouvement"
+          required
+          disabled={busy}
+          className={fieldClass}
+        />
+      ) : null}
 
       <input
         data-testid="upload-value"

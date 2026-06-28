@@ -13,7 +13,7 @@ test.describe('upload flow', () => {
 
     await page.goto('/upload');
     await page.getByTestId('upload-file').setInputFiles(samplePath);
-    await page.getByTestId('upload-movement').fill('snatch');
+    await page.getByTestId('upload-movement').selectOption('snatch');
     await page.getByTestId('upload-value').fill(String(uniqueValue));
     await page.getByTestId('upload-unit').selectOption('kg');
     await page.getByTestId('upload-submit').click();
@@ -25,7 +25,7 @@ test.describe('upload flow', () => {
     const deadline = Date.now() + 30_000;
     let onFeed = false;
     while (Date.now() < deadline) {
-      await page.goto('/feed?movement=snatch');
+      await page.goto('/snatch');
       if (await page.getByTestId(`feed-item-${rkey}`).isVisible().catch(() => false)) {
         onFeed = true;
         break;

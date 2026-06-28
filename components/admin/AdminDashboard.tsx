@@ -110,7 +110,7 @@ export default function AdminDashboard({
           <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-400">Admin</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">Dashboard</h1>
         </div>
-        <a href="/feed" className="text-sm text-neutral-500 hover:text-neutral-900">
+        <a href="/" className="text-sm text-neutral-500 hover:text-neutral-900">
           Feed
         </a>
       </header>

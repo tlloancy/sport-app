@@ -300,7 +300,7 @@ export async function getFeed(
 
           for (const item of records) {
             const record = item.value as unknown as PerformanceRecord;
-            if (record.movement !== movement) {
+            if (record.movement.trim().toLowerCase() !== movement.trim().toLowerCase()) {
               log(
                 `Skip ${item.uri}: movement "${record.movement}" ≠ "${movement}"`
               );

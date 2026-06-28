@@ -6,7 +6,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FeedPagePayload } from '@/lib/feed-pagination';
 
 type FeedPaginatorProps = {
-  movement: string;
+  slug: string;
+  label: string;
   initial: FeedPagePayload;
 };
 
@@ -29,7 +30,7 @@ function PageIndicator({ page, totalPages }: { page: number; totalPages: number 
   );
 }
 
-export default function FeedPaginator({ movement, initial }: FeedPaginatorProps) {
+export default function FeedPaginator({ slug, label, initial }: FeedPaginatorProps) {
   const [data, setData] = useState<FeedPagePayload>(initial);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
 
       try {
         const res = await fetch(
-          `/api/feed?movement=${encodeURIComponent(movement)}&page=${nextPage}`
+          `/api/feed?movement=${encodeURIComponent(slug)}&page=${nextPage}`
         );
         const json = (await res.json()) as FeedPagePayload & { error?: string };
         if (!res.ok) {
@@ -62,7 +63,7 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
         }
 
         setData(json);
-        window.history.replaceState(null, '', `/feed?movement=${movement}&page=${nextPage}`);
+        window.history.replaceState(null, '', `/${slug}${nextPage > 1 ? `?page=${nextPage}` : ''}`);
 
         requestAnimationFrame(() => {
           if (direction === 'up') {
@@ -84,7 +85,7 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
         }, 700);
       }
     },
-    [data.page, data.totalPages, movement]
+    [data.page, data.totalPages, slug]
   );
 
   const tryPageUp = useCallback(() => {
@@ -174,14 +175,22 @@ export default function FeedPaginator({ movement, initial }: FeedPaginatorProps)
           <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-400">
             Performances
           </p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">Feed</h1>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">{label}</h1>
         </div>
-        <Link
-          href="/"
-          className="pointer-events-auto text-sm text-neutral-500 transition-colors hover:text-neutral-900"
-        >
-          Accueil
-        </Link>
+        <div className="pointer-events-auto flex items-center gap-4">
+          <Link
+            href={`/${slug}/duel`}
+            className="text-sm text-neutral-500 transition-colors hover:text-neutral-900"
+          >
+            Duel
+          </Link>
+          <Link
+            href="/"
+            className="text-sm text-neutral-500 transition-colors hover:text-neutral-900"
+          >
+            Accueil
+          </Link>
+        </div>
       </header>
 
       {!empty ? (
