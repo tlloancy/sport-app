@@ -52,6 +52,12 @@ function initSchema(database: Database.Database) {
       anon_id TEXT,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS elo_scores (
+      uri TEXT PRIMARY KEY,
+      score REAL NOT NULL DEFAULT 1000,
+      vote_count INTEGER NOT NULL DEFAULT 0
+    );
   `);
 }
 
@@ -171,6 +177,37 @@ export function countReportsSince(anonId: string, sinceIso: string): number {
     )
     .get(anonId, sinceIso) as { count: number };
   return row.count;
+}
+
+export type EloScoreRow = {
+  uri: string;
+  score: number;
+  vote_count: number;
+};
+
+export function getEloScore(uri: string): EloScoreRow {
+  const row = getDb()
+    .prepare('SELECT uri, score, vote_count FROM elo_scores WHERE uri = ?')
+    .get(uri) as EloScoreRow | undefined;
+  return row ?? { uri, score: 1000, vote_count: 0 };
+}
+
+export function getEloScoresForUris(uris: string[]): Map<string, EloScoreRow> {
+  const map = new Map<string, EloScoreRow>();
+  if (uris.length === 0) return map;
+
+  const placeholders = uris.map(() => '?').join(', ');
+  const rows = getDb()
+    .prepare(`SELECT uri, score, vote_count FROM elo_scores WHERE uri IN (${placeholders})`)
+    .all(...uris) as EloScoreRow[];
+
+  for (const uri of uris) {
+    map.set(uri, { uri, score: 1000, vote_count: 0 });
+  }
+  for (const row of rows) {
+    map.set(row.uri, row);
+  }
+  return map;
 }
 
 export function insertReport(uri: string, reason: string | null, anonId: string) {

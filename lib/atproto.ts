@@ -330,6 +330,40 @@ export async function getFeed(
   );
 }
 
+/** All performance records for one DID (across configured PDS URLs). */
+export async function getPerformancesByDid(
+  did: string,
+  pdsUrls: string[]
+): Promise<Array<{ uri: string; rkey: string; record: PerformanceRecord; source: string }>> {
+  const results: Array<{
+    uri: string;
+    rkey: string;
+    record: PerformanceRecord;
+    source: string;
+  }> = [];
+
+  for (const pdsUrl of pdsUrls) {
+    try {
+      const agent = new AtpAgent({ service: pdsUrl });
+      const records = await listAllRecords(agent, did, PERFORMANCE_LEXICON);
+      for (const item of records) {
+        results.push({
+          uri: item.uri,
+          rkey: item.uri.split('/').pop()!,
+          record: item.value as unknown as PerformanceRecord,
+          source: pdsUrl,
+        });
+      }
+    } catch {
+      // DID may not exist on this PDS
+    }
+  }
+
+  return results.sort(
+    (a, b) => new Date(b.record.createdAt).getTime() - new Date(a.record.createdAt).getTime()
+  );
+}
+
 export async function getLeaderboard(
   movement: string,
   tranche: string,

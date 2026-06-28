@@ -2,7 +2,9 @@
 
 import ReportButton from '@/components/ReportButton';
 import VideoPlayer from '@/components/VideoPlayer';
+import { formatDidHandle } from '@/lib/did-display';
 import type { FeedEntry } from '@/lib/feed-pagination';
+import Link from 'next/link';
 
 export default function FeedItemCard({ item }: { item: FeedEntry }) {
   const date = new Date(item.record.createdAt).toLocaleString('fr-FR', {
@@ -40,7 +42,16 @@ export default function FeedItemCard({ item }: { item: FeedEntry }) {
           </span>
         </h2>
         <p className="mt-1 flex items-center justify-between text-[11px] text-neutral-500">
-          <span>Tranche {item.record.tranche ?? '—'}</span>
+          <span className="flex items-center gap-2">
+            <span>Tranche {item.record.tranche ?? '—'}</span>
+            <Link
+              href={`/profile/${encodeURIComponent(item.did)}`}
+              className="text-neutral-400 underline-offset-2 hover:text-neutral-700 hover:underline"
+              data-testid={`feed-author-${item.rkey}`}
+            >
+              {formatDidHandle(item.did)}
+            </Link>
+          </span>
           <span className="flex items-center gap-2">
             <ReportButton uri={item.uri} movement={item.record.movement} />
             <time dateTime={item.record.createdAt}>{date}</time>
