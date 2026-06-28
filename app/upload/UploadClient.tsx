@@ -544,7 +544,7 @@ export default function UploadClient() {
         data-testid="upload-rules"
         className="rounded-md border-2 border-neutral-900 bg-white px-4 py-3 text-sm text-neutral-900"
       >
-        <p className="font-semibold tracking-tight">Conditions avant publication</p>
+        <p className="font-semibold tracking-tight">Avant d&apos;envoyer</p>
         <ul className="mt-2 list-inside list-disc space-y-1 text-neutral-800">
           {UPLOAD_RULES.map((rule) => (
             <li key={rule}>{rule}</li>

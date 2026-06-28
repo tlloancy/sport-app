@@ -22,18 +22,14 @@ export default function CategoryCard({ category }: { category: CategorySummary }
           />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-neutral-500">
-            Aucune vidéo
+            0 perf
           </div>
         )}
       </div>
       <div className="px-4 py-3">
         <h2 className="text-base font-semibold tracking-tight text-neutral-900">{label}</h2>
         <p className="mt-1 text-sm text-neutral-500">
-          {perfCount === 0
-            ? 'Aucune perf'
-            : perfCount === 1
-              ? '1 performance'
-              : `${perfCount} performances`}
+          {perfCount === 1 ? '1 perf' : `${perfCount} perf`}
         </p>
       </div>
     </Link>

@@ -143,10 +143,11 @@ export default function DuelClient({ slug, label }: { slug: string; label: strin
                   type="button"
                   disabled={voting}
                   onClick={() => void vote(side)}
+                  aria-label="Donner de la force"
                   className="mt-3 w-full rounded-md bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:bg-neutral-400"
                   data-testid={`duel-choose-${side}`}
                 >
-                  Choisir
+                  💪 Force
                 </button>
               </div>
             </article>

@@ -5,10 +5,9 @@ export const UPLOAD_LIMITS_MESSAGE =
   'Vidéo trop longue (max 60s) ou trop lourde (max 50MB)';
 
 export const UPLOAD_RULES = [
-  `Durée maximale : ${MAX_UPLOAD_DURATION_SEC} secondes`,
-  `Taille maximale : 50 Mo`,
-  'Format : fichier vidéo (MP4, MOV, WebM…)',
-  'Le découpage HLS (ffmpeg) s’exécute sur le serveur après l’envoi',
+  '⏱ Max 60 s',
+  '📦 Max 50 Mo',
+  'Vidéo MP4, MOV, WebM…',
 ] as const;
 
 export function isWithinUploadLimits(sizeBytes: number, durationSec: number): boolean {

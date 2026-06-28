@@ -24,13 +24,14 @@ export default async function HomePage() {
       <header className="mx-auto flex max-w-5xl items-end justify-between gap-4 px-6 py-8">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Sport</h1>
-          <p className="mt-2 text-neutral-600">Choisis une catégorie</p>
+          <p className="mt-2 text-neutral-600">Poste ta perf. Elle t&apos;appartient.</p>
         </div>
         <Link
           href="/upload"
           className="inline-flex h-10 items-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white"
+          aria-label="Poster une performance"
         >
-          Poster une perf
+          + Perf
         </Link>
       </header>
 

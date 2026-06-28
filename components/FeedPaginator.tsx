@@ -187,8 +187,9 @@ export default function FeedPaginator({ slug, label, initial }: FeedPaginatorPro
           <Link
             href="/"
             className="text-sm text-neutral-500 transition-colors hover:text-neutral-900"
+            aria-label="Accueil"
           >
-            Accueil
+            ←
           </Link>
         </div>
       </header>
@@ -209,9 +210,15 @@ export default function FeedPaginator({ slug, label, initial }: FeedPaginatorPro
       ) : null}
 
       {empty ? (
-        <p data-testid="feed-empty" className="flex min-h-[100dvh] items-center justify-center text-neutral-500">
-          Aucune performance pour l&apos;instant.
-        </p>
+        <div
+          data-testid="feed-empty"
+          className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-neutral-500"
+        >
+          <p>Sois le premier.</p>
+          <Link href="/upload" className="text-sm text-neutral-900 underline underline-offset-2">
+            + Perf
+          </Link>
+        </div>
       ) : (
         <div
           ref={gridRef}
