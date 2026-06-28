@@ -14,11 +14,15 @@ export interface VideoPlayerProps {
   viewportAutoplay?: boolean;
 }
 
-const SEGMENT_URL = /^https:\/\/chunks\.local\/([a-f0-9]{64})\.ts(?:\?.*)?$/;
 const VIEWPORT_ROOT_MARGIN = '18% 0px';
 const VIEWPORT_PLAY_RATIO = 0.22;
 
-function buildPlaylist(hashes: string[]): string {
+function chunkSegmentUrl(hash: string, peerList: string): string {
+  const qs = new URLSearchParams({ hash, peers: peerList });
+  return `/api/p2p/chunk?${qs}`;
+}
+
+function buildPlaylist(hashes: string[], peerList: string): string {
   const lines = [
     '#EXTM3U',
     '#EXT-X-VERSION:3',
@@ -27,10 +31,22 @@ function buildPlaylist(hashes: string[]): string {
   ];
   for (const hash of hashes) {
     lines.push('#EXTINF:2.0,');
-    lines.push(`https://chunks.local/${hash}.ts`);
+    lines.push(chunkSegmentUrl(hash, peerList));
   }
   lines.push('#EXT-X-ENDLIST');
   return lines.join('\n');
+}
+
+function parseChunkApiUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.pathname !== '/api/p2p/chunk') return null;
+    const hash = parsed.searchParams.get('hash');
+    if (!hash || !/^[a-f0-9]{64}$/.test(hash)) return null;
+    return hash;
+  } catch {
+    return null;
+  }
 }
 
 export default function VideoPlayer({
@@ -98,61 +114,56 @@ export default function VideoPlayer({
 
     setReady(false);
     setError(null);
+    wasmReadyRef.current = false;
 
     if (!Hls.isSupported()) {
       setError('Hls.js is not supported in this browser');
       return undefined;
     }
 
-    const setup = async () => {
-      wasmReadyRef.current = await ensureP2pWasm();
+    void ensureP2pWasm().then((ok) => {
+      if (!cancelled) wasmReadyRef.current = ok;
+    });
+
+    hls = new Hls({
+      enableWorker: false,
+      fetchSetup: async (context, initParams) => {
+        const hash = parseChunkApiUrl(context.url);
+        if (hash && wasmReadyRef.current) {
+          const buf = await fetchChunkViaWasm(hash, peers);
+          if (buf) {
+            const blobUrl = URL.createObjectURL(new Blob([buf], { type: 'video/mp2t' }));
+            blobUrlsRef.current.push(blobUrl);
+            return new Request(blobUrl, initParams);
+          }
+        }
+
+        return new Request(context.url, initParams);
+      },
+    });
+
+    hls.on(Hls.Events.ERROR, (_e, data) => {
+      if (data.fatal) {
+        setError(`${data.type}: ${data.details}`);
+      }
+    });
+
+    playlistUrl = URL.createObjectURL(
+      new Blob([buildPlaylist(chunkManifest, peerList)], {
+        type: 'application/vnd.apple.mpegurl',
+      })
+    );
+    hls.loadSource(playlistUrl);
+    hls.attachMedia(video);
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
       if (cancelled) return;
-
-      hls = new Hls({
-        enableWorker: false,
-        fetchSetup: async (context, initParams) => {
-          const match = context.url.match(SEGMENT_URL);
-          if (!match) {
-            return new Request(context.url, initParams);
-          }
-
-          const hash = match[1]!;
-          if (wasmReadyRef.current) {
-            const buf = await fetchChunkViaWasm(hash, peers);
-            if (buf) {
-              const blobUrl = URL.createObjectURL(new Blob([buf], { type: 'video/mp2t' }));
-              blobUrlsRef.current.push(blobUrl);
-              return new Request(blobUrl, initParams);
-            }
-          }
-
-          const qs = new URLSearchParams({ hash, peers: peerList });
-          return new Request(`/api/p2p/chunk?${qs}`, initParams);
-        },
-      });
-
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (data.fatal) {
-          setError(`${data.type}: ${data.details}`);
-        }
-      });
-
-      playlistUrl = URL.createObjectURL(
-        new Blob([buildPlaylist(chunkManifest)], { type: 'application/vnd.apple.mpegurl' })
-      );
-      hls.loadSource(playlistUrl);
-      hls.attachMedia(video);
-
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setReady(true);
-        const playNow = autoPlay || (viewportAutoplay && shouldPlayRef.current);
-        if (playNow) {
-          video.play().catch(() => undefined);
-        }
-      });
-    };
-
-    void setup();
+      setReady(true);
+      const playNow = autoPlay || (viewportAutoplay && shouldPlayRef.current);
+      if (playNow) {
+        video.play().catch(() => undefined);
+      }
+    });
 
     return () => {
       cancelled = true;
