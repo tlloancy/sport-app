@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { listActiveCategories } from '@/lib/db';
+import { listActiveDisciplines } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
+/** @deprecated use /api/disciplines */
 export async function GET() {
-  const categories = listActiveCategories().map(({ slug, label }) => ({ slug, label }));
+  const categories = listActiveDisciplines().map(({ slug, label }) => ({ slug, label }));
   return NextResponse.json({ categories });
 }

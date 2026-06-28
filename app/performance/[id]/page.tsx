@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import PerformanceClient from './PerformanceClient';
 import { getPerformanceByRkey, resolvePeerFromDID } from '@/lib/atproto';
 import { getGatewayPeerId } from '@/lib/p2p-gateway';
+import { formatMetricValue, type MetricType } from '@/lib/metrics';
 import { pdsUrl } from '@/lib/upload-agent';
 
 export default async function PerformancePage({
@@ -27,13 +28,20 @@ export default async function PerformancePage({
     (await resolvePeerFromDID(did, pdsUrl())) ?? (await getGatewayPeerId()) ?? 'local-peer';
   const peers = [peerId];
 
+  const metricDisplay = formatMetricValue(
+    record.metricType as MetricType,
+    record.value,
+    record.unit
+  );
+
   return (
     <main className="flex min-h-screen flex-col items-center gap-4 p-8">
       <h1 className="text-xl font-semibold">
-        {record.movement} — {record.value} {record.unit}
+        {record.movement}
+        {metricDisplay !== '—' ? ` — ${metricDisplay}` : ''}
       </h1>
       <p className="text-sm text-gray-500">
-        tranche {record.tranche}
+        {record.discipline}
       </p>
       <PerformanceClient chunkManifest={hashes} peers={peers} />
     </main>

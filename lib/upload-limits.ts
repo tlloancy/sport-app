@@ -1,5 +1,8 @@
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+/** Nominal limit shown to users (rules, error copy). */
 export const MAX_UPLOAD_DURATION_SEC = 90;
+/** Hidden slack for metadata/ffprobe drift (e.g. a 90s clip reported as 90.2s). */
+export const UPLOAD_DURATION_GRACE_SEC = 2;
 
 export const UPLOAD_LIMITS_MESSAGE =
   `Vidéo trop longue (max ${MAX_UPLOAD_DURATION_SEC}s) ou trop lourde (max 50MB)`;
@@ -10,13 +13,20 @@ export const UPLOAD_RULES = [
   'Vidéo MP4, MOV, WebM…',
 ] as const;
 
+export function maxAllowedUploadDurationSec(): number {
+  return MAX_UPLOAD_DURATION_SEC + UPLOAD_DURATION_GRACE_SEC;
+}
+
 export function isWithinUploadLimits(sizeBytes: number, durationSec: number): boolean {
-  return sizeBytes <= MAX_UPLOAD_BYTES && durationSec <= MAX_UPLOAD_DURATION_SEC;
+  return (
+    sizeBytes <= MAX_UPLOAD_BYTES && durationSec <= maxAllowedUploadDurationSec()
+  );
 }
 
 export function formatDurationSec(durationSec: number): string {
   if (!Number.isFinite(durationSec) || durationSec <= 0) return '—';
-  return `${Math.round(durationSec * 10) / 10}s`;
+  const rounded = Math.round(durationSec * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}s` : `${rounded.toFixed(1)}s`;
 }
 
 /** Read duration from a browser File without uploading (HTML5 metadata). */

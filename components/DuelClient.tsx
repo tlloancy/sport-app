@@ -2,6 +2,7 @@
 
 import VideoPlayer from '@/components/VideoPlayer';
 import type { DuelPair } from '@/lib/duel-pair';
+import { formatMetricValue, type MetricType } from '@/lib/metrics';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -83,7 +84,7 @@ export default function DuelClient({ slug, label }: { slug: string; label: strin
         className="flex min-h-[60dvh] flex-col items-center justify-center px-6 text-center"
       >
         <p className="text-neutral-600">
-          {error ?? 'Pas assez de performances dans la même tranche pour un duel.'}
+          {error ?? 'Pas assez de performances pour le même mouvement.'}
         </p>
         <Link href={`/${slug}`} className="mt-4 text-sm text-neutral-500 underline">
           Retour au feed {label}
@@ -102,7 +103,7 @@ export default function DuelClient({ slug, label }: { slug: string; label: strin
       <header className="border-b border-neutral-200 px-6 py-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-400">Duel</p>
         <h1 className="mt-1 text-xl font-semibold tracking-tight">
-          {label} · Tranche {pair.tranche}
+          {label} · {pair.movement}
         </h1>
         {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
       </header>
@@ -111,6 +112,11 @@ export default function DuelClient({ slug, label }: { slug: string; label: strin
         {cards.map(({ side, entry }) => {
           const isWinner = chosen === side;
           const isLoser = chosen !== null && chosen !== side;
+          const metricDisplay = formatMetricValue(
+            entry.record.metricType as MetricType,
+            entry.record.value,
+            entry.record.unit
+          );
           return (
             <article
               key={entry.uri}
@@ -137,7 +143,7 @@ export default function DuelClient({ slug, label }: { slug: string; label: strin
               </div>
               <div className="border-t border-neutral-100 px-4 py-3">
                 <p className="text-sm font-medium text-neutral-900">
-                  {entry.record.value} {entry.record.unit}
+                  {metricDisplay !== '—' ? metricDisplay : entry.record.movement}
                 </p>
                 <button
                   type="button"

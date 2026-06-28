@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import DuelClient from '@/components/DuelClient';
-import { isActiveCategory, listActiveCategories } from '@/lib/db';
+import { getDiscipline, isActiveDiscipline } from '@/lib/db';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -9,15 +9,15 @@ type PageProps = {
   params: { slug: string };
 };
 
-export default function CategoryDuelPage({ params }: PageProps) {
+export default function DisciplineDuelPage({ params }: PageProps) {
   const slug = params.slug.toLowerCase();
 
-  if (!isActiveCategory(slug)) {
+  if (!isActiveDiscipline(slug)) {
     notFound();
   }
 
-  const category = listActiveCategories().find((c) => c.slug === slug);
-  const label = category?.label ?? slug;
+  const discipline = getDiscipline(slug)!;
+  const label = discipline.label;
 
   return (
     <main className="min-h-[100dvh] bg-white">

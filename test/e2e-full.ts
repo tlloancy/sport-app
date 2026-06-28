@@ -66,7 +66,10 @@ async function main() {
     await announcePeerId(accountA.agent, peerA.id);
 
     const performanceUri = await publishPerformance(accountA.agent, {
+      family: 'sport',
+      discipline: 'halterophilie',
       movement: 'snatch',
+      metricType: 'weight',
       value: 35,
       unit: 'kg',
       videoHash,
@@ -77,13 +80,13 @@ async function main() {
     console.log('PASS [1/5] performance published on PDS_A');
 
     // ── Machine B — reads federated feed (PDS_A + PDS_B) ───────────────
-    const feed = await getFeed('snatch', 'T2', [PDS_1, PDS_2]);
+    const feed = await getFeed('halterophilie', 'snatch', [PDS_1, PDS_2]);
     const onFeed = feed.find((item) => item.uri === performanceUri);
-    if (!onFeed || onFeed.record.tranche !== 'T2' || onFeed.record.value !== 35) {
-      console.error('FAIL [2/5]: performance not in T2 feed', { onFeed, feedLen: feed.length });
+    if (!onFeed || onFeed.record.value !== 35 || onFeed.record.movement !== 'snatch') {
+      console.error('FAIL [2/5]: performance not in snatch feed', { onFeed, feedLen: feed.length });
       process.exit(1);
     }
-    console.log('PASS [2/5] performance visible on PDS_B feed — tranche T2');
+    console.log('PASS [2/5] performance visible on federated feed');
 
     // ── Machine B — stream via P2P (no central video server) ─────────
     const peerB = await createPeer();

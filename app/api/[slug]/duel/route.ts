@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isActiveCategory } from '@/lib/db';
+import { isActiveDiscipline } from '@/lib/db';
 import { pickDuelPair } from '@/lib/duel-pair';
 import { pdsUrls } from '@/lib/upload-agent';
 
@@ -11,8 +11,8 @@ export async function GET(
 ) {
   const slug = params.slug.toLowerCase();
 
-  if (!isActiveCategory(slug)) {
-    return NextResponse.json({ error: 'Unknown category' }, { status: 404 });
+  if (!isActiveDiscipline(slug)) {
+    return NextResponse.json({ error: 'Unknown discipline' }, { status: 404 });
   }
 
   if (pdsUrls().length === 0) {

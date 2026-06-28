@@ -13,7 +13,10 @@ import {
 import { seedChunksFromDir } from '@/lib/p2p-gateway';
 import { chunkStorageDir } from '@/lib/p2p-server';
 import { classifyChunkError, uploadErrorBody } from '@/lib/upload-error';
-import { MAX_UPLOAD_DURATION_SEC } from '@/lib/upload-limits';
+import {
+  isWithinUploadLimits,
+  MAX_UPLOAD_DURATION_SEC,
+} from '@/lib/upload-limits';
 
 export const runtime = 'nodejs';
 
@@ -64,13 +67,15 @@ export async function POST(req: NextRequest) {
     fs.writeFileSync(tmpPath, bytes);
 
     const durationSec = probeVideoDuration(tmpPath);
-    if (durationSec > MAX_UPLOAD_DURATION_SEC) {
+    if (!isWithinUploadLimits(file.size, durationSec)) {
       const body = uploadErrorBody(
         'chunk',
         'upload_limit',
         UPLOAD_LIMITS_MESSAGE,
         413,
-        `Durée ${Math.round(durationSec * 10) / 10}s > ${MAX_UPLOAD_DURATION_SEC}s`
+        durationSec > MAX_UPLOAD_DURATION_SEC
+          ? `Durée ${Math.round(durationSec * 10) / 10}s > ${MAX_UPLOAD_DURATION_SEC}s`
+          : `Taille ${file.size} octets > ${MAX_UPLOAD_BYTES} octets (50 Mo)`
       );
       return NextResponse.json(body, { status: body.status });
     }

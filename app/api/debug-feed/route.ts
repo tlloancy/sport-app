@@ -8,11 +8,10 @@ export async function GET() {
   const logs: string[] = [];
 
   try {
-    const performances = await getFeed('snatch', undefined, pdsUrls, logs);
+    const performances = await getFeed('halterophilie', undefined, pdsUrls, logs);
     return NextResponse.json({
       pdsUrls,
-      movement: 'snatch',
-      tranche: null,
+      discipline: 'halterophilie',
       count: performances.length,
       performances,
       logs,

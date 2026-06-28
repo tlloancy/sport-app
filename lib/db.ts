@@ -1,13 +1,24 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import type { MetricType } from '@/lib/metrics';
+import { isMetricType } from '@/lib/metrics';
 
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DB_DIR, 'sport.db');
 
-export type CategoryRow = {
+export type FamilyRow = {
   slug: string;
   label: string;
+  emoji: string;
+  sort_order: number;
+};
+
+export type DisciplineRow = {
+  slug: string;
+  label: string;
+  family: string;
+  metric_type: MetricType;
   active: number;
   created_at: string;
 };
@@ -27,15 +38,43 @@ export type ReportRow = {
   created_at: string;
 };
 
+const SEED_FAMILIES: Array<Omit<FamilyRow, never>> = [
+  { slug: 'sport', label: 'Sport', emoji: '⚡', sort_order: 1 },
+  { slug: 'cuisine', label: 'Cuisine', emoji: '🍳', sort_order: 2 },
+  { slug: 'jeux', label: 'Jeux vidéo', emoji: '🎮', sort_order: 3 },
+  { slug: 'art', label: 'Art', emoji: '🎨', sort_order: 4 },
+  { slug: 'musique', label: 'Musique', emoji: '🎵', sort_order: 5 },
+  { slug: 'autre', label: 'Autre', emoji: '✨', sort_order: 6 },
+];
+
+const SEED_DISCIPLINES: Array<{
+  slug: string;
+  label: string;
+  family: string;
+  metric_type: MetricType;
+}> = [{ slug: 'halterophilie', label: 'Haltérophilie', family: 'sport', metric_type: 'weight' }];
+
+const RESERVED_DISCIPLINE_SLUGS = new Set(SEED_FAMILIES.map((f) => f.slug));
+
 let db: Database.Database | null = null;
 
 function initSchema(database: Database.Database) {
   database.exec(`
-    CREATE TABLE IF NOT EXISTS categories (
+    CREATE TABLE IF NOT EXISTS families (
       slug TEXT PRIMARY KEY,
       label TEXT NOT NULL,
+      emoji TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS disciplines (
+      slug TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      family TEXT NOT NULL,
+      metric_type TEXT NOT NULL,
       active INTEGER DEFAULT 1,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (family) REFERENCES families(slug)
     );
 
     CREATE TABLE IF NOT EXISTS moderation (
@@ -69,16 +108,36 @@ function initSchema(database: Database.Database) {
   `);
 }
 
-function seedCategories(database: Database.Database) {
-  const row = database.prepare('SELECT COUNT(*) AS count FROM categories').get() as {
+function seedFamilies(database: Database.Database) {
+  const row = database.prepare('SELECT COUNT(*) AS count FROM families').get() as { count: number };
+  if (row.count > 0) return;
+
+  const insert = database.prepare(
+    'INSERT INTO families (slug, label, emoji, sort_order) VALUES (?, ?, ?, ?)'
+  );
+  for (const family of SEED_FAMILIES) {
+    insert.run(family.slug, family.label, family.emoji, family.sort_order);
+  }
+}
+
+function seedDisciplines(database: Database.Database) {
+  const row = database.prepare('SELECT COUNT(*) AS count FROM disciplines').get() as {
     count: number;
   };
-  if (row.count === 0) {
-    database
-      .prepare(
-        'INSERT INTO categories (slug, label, active, created_at) VALUES (?, ?, 1, ?)'
-      )
-      .run('snatch', 'Snatch', new Date().toISOString());
+  if (row.count > 0) return;
+
+  const insert = database.prepare(
+    'INSERT INTO disciplines (slug, label, family, metric_type, active, created_at) VALUES (?, ?, ?, ?, 1, ?)'
+  );
+  const now = new Date().toISOString();
+  for (const discipline of SEED_DISCIPLINES) {
+    insert.run(
+      discipline.slug,
+      discipline.label,
+      discipline.family,
+      discipline.metric_type,
+      now
+    );
   }
 }
 
@@ -88,47 +147,104 @@ export function getDb(): Database.Database {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     initSchema(db);
-    seedCategories(db);
+    seedFamilies(db);
+    seedDisciplines(db);
   }
   return db;
 }
 
-export function listActiveCategories(): CategoryRow[] {
+export function listFamilies(): FamilyRow[] {
   return getDb()
-    .prepare('SELECT slug, label, active, created_at FROM categories WHERE active = 1 ORDER BY label')
-    .all() as CategoryRow[];
+    .prepare('SELECT slug, label, emoji, sort_order FROM families ORDER BY sort_order, label')
+    .all() as FamilyRow[];
 }
 
-export function listAllCategories(): CategoryRow[] {
+export function getFamily(slug: string): FamilyRow | undefined {
   return getDb()
-    .prepare('SELECT slug, label, active, created_at FROM categories ORDER BY label')
-    .all() as CategoryRow[];
+    .prepare('SELECT slug, label, emoji, sort_order FROM families WHERE slug = ?')
+    .get(slug.toLowerCase()) as FamilyRow | undefined;
 }
 
-export function isActiveCategory(slug: string): boolean {
-  const row = getDb()
-    .prepare('SELECT 1 FROM categories WHERE slug = ? AND active = 1')
-    .get(slug.toLowerCase());
-  return Boolean(row);
+export function isValidFamily(slug: string): boolean {
+  return Boolean(getFamily(slug));
 }
 
-export function getActiveCategorySlugs(): Set<string> {
-  return new Set(listActiveCategories().map((c) => c.slug));
+export function listActiveDisciplines(family?: string): DisciplineRow[] {
+  if (family) {
+    return getDb()
+      .prepare(
+        'SELECT slug, label, family, metric_type, active, created_at FROM disciplines WHERE active = 1 AND family = ? ORDER BY label'
+      )
+      .all(family.toLowerCase()) as DisciplineRow[];
+  }
+  return getDb()
+    .prepare(
+      'SELECT slug, label, family, metric_type, active, created_at FROM disciplines WHERE active = 1 ORDER BY label'
+    )
+    .all() as DisciplineRow[];
 }
 
-export function addCategory(slug: string, label: string): void {
+export function listAllDisciplines(): DisciplineRow[] {
+  return getDb()
+    .prepare(
+      'SELECT slug, label, family, metric_type, active, created_at FROM disciplines ORDER BY label'
+    )
+    .all() as DisciplineRow[];
+}
+
+export function getDiscipline(slug: string): DisciplineRow | undefined {
+  return getDb()
+    .prepare(
+      'SELECT slug, label, family, metric_type, active, created_at FROM disciplines WHERE slug = ?'
+    )
+    .get(slug.toLowerCase()) as DisciplineRow | undefined;
+}
+
+export function isActiveDiscipline(slug: string): boolean {
+  const row = getDiscipline(slug);
+  return Boolean(row && row.active === 1);
+}
+
+export function getActiveDisciplineSlugs(): Set<string> {
+  return new Set(listActiveDisciplines().map((d) => d.slug));
+}
+
+export function addDiscipline(
+  slug: string,
+  label: string,
+  family: string,
+  metricType: MetricType
+): void {
+  if (RESERVED_DISCIPLINE_SLUGS.has(slug)) {
+    throw new Error('Slug réservé (famille).');
+  }
+  if (!isValidFamily(family)) {
+    throw new Error('Famille inconnue.');
+  }
+  if (!isMetricType(metricType)) {
+    throw new Error('Type de métrique invalide.');
+  }
   getDb()
     .prepare(
-      'INSERT INTO categories (slug, label, active, created_at) VALUES (?, ?, 1, ?)'
+      'INSERT INTO disciplines (slug, label, family, metric_type, active, created_at) VALUES (?, ?, ?, ?, 1, ?)'
     )
-    .run(slug, label, new Date().toISOString());
+    .run(slug, label, family.toLowerCase(), metricType, new Date().toISOString());
 }
 
-export function softDeleteCategory(slug: string): boolean {
+export function softDeleteDiscipline(slug: string): boolean {
   const result = getDb()
-    .prepare('UPDATE categories SET active = 0 WHERE slug = ?')
+    .prepare('UPDATE disciplines SET active = 0 WHERE slug = ?')
     .run(slug.toLowerCase());
   return result.changes > 0;
+}
+
+export function normalizeMovement(movement: string): string {
+  return movement.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** @deprecated use normalizeMovement */
+export function normalizeMovementSlug(movement: string): string {
+  return normalizeMovement(movement);
 }
 
 export function getModeratedOutUris(): Set<string> {
@@ -136,10 +252,6 @@ export function getModeratedOutUris(): Set<string> {
     .prepare('SELECT uri FROM moderation WHERE hidden = 1 OR deleted = 1')
     .all() as Pick<ModerationRow, 'uri'>[];
   return new Set(rows.map((r) => r.uri));
-}
-
-export function normalizeMovementSlug(movement: string): string {
-  return movement.trim().toLowerCase();
 }
 
 export function listRecentReports(limit = 50): ReportRow[] {

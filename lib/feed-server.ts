@@ -1,5 +1,5 @@
 import { getFeed, resolvePeerFromDID } from '@/lib/atproto';
-import { isActiveCategory } from '@/lib/db';
+import { isActiveDiscipline } from '@/lib/db';
 import { filterFeedItems } from '@/lib/feed-filter';
 import { getGatewayPeerId } from '@/lib/p2p-gateway';
 import {
@@ -11,15 +11,15 @@ import {
 } from '@/lib/feed-pagination';
 import { pdsUrl, pdsUrls } from '@/lib/upload-agent';
 
-export async function loadFeedPage(movement: string, page: number): Promise<FeedPagePayload> {
-  const slug = movement.trim().toLowerCase();
-  if (!isActiveCategory(slug)) {
+export async function loadFeedPage(discipline: string, page: number): Promise<FeedPagePayload> {
+  const slug = discipline.trim().toLowerCase();
+  if (!isActiveDiscipline(slug)) {
     return {
       page: 1,
       pageSize: FEED_PAGE_SIZE,
       totalPages: 1,
       total: 0,
-      movement: slug,
+      discipline: slug,
       items: [],
     };
   }
@@ -50,10 +50,12 @@ export async function loadFeedPage(movement: string, page: number): Promise<Feed
       peerId,
       hashes: record.chunkManifest ? (JSON.parse(record.chunkManifest) as string[]) : [],
       record: {
+        family: record.family,
+        discipline: record.discipline,
         movement: record.movement,
+        metricType: record.metricType,
         value: record.value,
         unit: record.unit,
-        tranche: record.tranche,
         createdAt: record.createdAt,
         videoHash: record.videoHash,
       },
@@ -65,7 +67,7 @@ export async function loadFeedPage(movement: string, page: number): Promise<Feed
     pageSize: FEED_PAGE_SIZE,
     totalPages,
     total,
-    movement: slug,
+    discipline: slug,
     items,
   };
 }

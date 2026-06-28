@@ -4,10 +4,10 @@ import { FormEvent, useState } from 'react';
 
 type ReportButtonProps = {
   uri: string;
-  movement: string;
+  context: string;
 };
 
-export default function ReportButton({ uri, movement }: ReportButtonProps) {
+export default function ReportButton({ uri, context }: ReportButtonProps) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
@@ -22,7 +22,7 @@ export default function ReportButton({ uri, movement }: ReportButtonProps) {
       const res = await fetch('/api/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uri, reason: reason.trim() || undefined, movement }),
+        body: JSON.stringify({ uri, reason: reason.trim() || undefined, movement: context }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -65,7 +65,7 @@ export default function ReportButton({ uri, movement }: ReportButtonProps) {
             <h3 id="report-title" className="text-sm font-medium text-neutral-900">
               Signaler cette performance
             </h3>
-            <p className="mt-1 text-xs text-neutral-500">{movement}</p>
+            <p className="mt-1 text-xs text-neutral-500">{context}</p>
             <form onSubmit={onSubmit} className="mt-4 space-y-3">
               <textarea
                 data-testid="report-reason"

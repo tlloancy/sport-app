@@ -11,6 +11,20 @@ const PDS_1 = process.env.PDS_1_URL ?? 'http://localhost:2583';
 const PDS_2 = process.env.PDS_2_URL ?? 'http://localhost:2584';
 const PASSWORD = 'testpass-step8';
 
+function perf(value: number, videoHash: string, createdAt: string): PerformanceRecord {
+  return {
+    family: 'sport',
+    discipline: 'halterophilie',
+    movement: 'snatch',
+    metricType: 'weight',
+    value,
+    unit: 'kg',
+    videoHash,
+    chunkManifest: '[]',
+    createdAt,
+  };
+}
+
 async function main() {
   const account1 = await createAccountOnPds(
     PDS_1,
@@ -31,27 +45,16 @@ async function main() {
     throw new Error('missing agents after account creation');
   }
 
-  const perfA: PerformanceRecord = {
-    movement: 'snatch',
-    value: 40,
-    unit: 'kg',
-    videoHash: 'hash-pds1-step8',
-    chunkManifest: '[]',
-    createdAt: new Date(Date.now() - 60_000).toISOString(),
-  };
-  const perfB: PerformanceRecord = {
-    movement: 'snatch',
-    value: 55,
-    unit: 'kg',
-    videoHash: 'hash-pds2-step8',
-    chunkManifest: '[]',
-    createdAt: new Date().toISOString(),
-  };
+  await publishPerformance(
+    account1.agent,
+    perf(40, 'hash-pds1-step8', new Date(Date.now() - 60_000).toISOString())
+  );
+  await publishPerformance(
+    account2.agent,
+    perf(55, 'hash-pds2-step8', new Date().toISOString())
+  );
 
-  await publishPerformance(account1.agent, perfA);
-  await publishPerformance(account2.agent, perfB);
-
-  const feed = await getFeed('snatch', undefined, [PDS_1, PDS_2]);
+  const feed = await getFeed('halterophilie', undefined, [PDS_1, PDS_2]);
   const sources = new Set(feed.map((item) => item.source));
 
   const hasPds1 = sources.has(PDS_1);

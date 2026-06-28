@@ -7,10 +7,12 @@ export type FeedEntry = {
   peerId: string;
   hashes: string[];
   record: {
+    family: string;
+    discipline: string;
     movement: string;
-    value: number;
-    unit: string;
-    tranche?: string;
+    metricType: string;
+    value?: number;
+    unit?: string;
     createdAt: string;
     videoHash: string;
   };
@@ -21,7 +23,7 @@ export type FeedPagePayload = {
   pageSize: number;
   totalPages: number;
   total: number;
-  movement: string;
+  discipline: string;
   items: FeedEntry[];
 };
 

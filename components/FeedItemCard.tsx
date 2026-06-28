@@ -4,6 +4,7 @@ import ReportButton from '@/components/ReportButton';
 import VideoPlayer from '@/components/VideoPlayer';
 import { formatDidHandle } from '@/lib/did-display';
 import type { FeedEntry } from '@/lib/feed-pagination';
+import { formatMetricValue, type MetricType } from '@/lib/metrics';
 import Link from 'next/link';
 
 export default function FeedItemCard({ item }: { item: FeedEntry }) {
@@ -13,6 +14,12 @@ export default function FeedItemCard({ item }: { item: FeedEntry }) {
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  const metricDisplay = formatMetricValue(
+    item.record.metricType as MetricType,
+    item.record.value,
+    item.record.unit
+  );
 
   return (
     <article
@@ -36,14 +43,15 @@ export default function FeedItemCard({ item }: { item: FeedEntry }) {
       <header className="shrink-0 border-t border-neutral-100 bg-white/95 px-4 py-3 backdrop-blur-sm">
         <h2 className="text-sm font-medium tracking-tight text-neutral-900">
           {item.record.movement}
-          <span className="mx-1.5 text-neutral-300">·</span>
-          <span className="tabular-nums">
-            {item.record.value} {item.record.unit}
-          </span>
+          {metricDisplay !== '—' ? (
+            <>
+              <span className="mx-1.5 text-neutral-300">·</span>
+              <span className="tabular-nums">{metricDisplay}</span>
+            </>
+          ) : null}
         </h2>
         <p className="mt-1 flex items-center justify-between text-[11px] text-neutral-500">
           <span className="flex items-center gap-2">
-            <span>Tranche {item.record.tranche ?? '—'}</span>
             <Link
               href={`/profile/${encodeURIComponent(item.did)}`}
               className="text-neutral-400 underline-offset-2 hover:text-neutral-700 hover:underline"
@@ -53,7 +61,10 @@ export default function FeedItemCard({ item }: { item: FeedEntry }) {
             </Link>
           </span>
           <span className="flex items-center gap-2">
-            <ReportButton uri={item.uri} movement={item.record.movement} />
+            <ReportButton
+              uri={item.uri}
+              context={`${item.record.discipline} · ${item.record.movement}`}
+            />
             <time dateTime={item.record.createdAt}>{date}</time>
           </span>
         </p>

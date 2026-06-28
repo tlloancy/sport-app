@@ -5,7 +5,8 @@ import { AtpAgent } from '@atproto/api';
 import { getSigningDidKey, isValidDidDoc, type DidDocument } from '@atproto/common-web';
 import { Secp256k1Keypair, verifySignature } from '@atproto/crypto';
 import { verifySig } from '@atproto/crypto/dist/secp256k1/operations.js';
-import { assignTranche } from '@/lib/tranches';
+import { normalizeMovement } from '@/lib/db';
+import { compareMetricValues, type MetricType, type MetricUnit } from '@/lib/metrics';
 
 export const PERFORMANCE_LEXICON = 'app.sport.performance' as const;
 export const COMMENT_LEXICON = 'app.sport.comment' as const;
@@ -59,12 +60,14 @@ export interface LocalIdentity {
 }
 
 export interface PerformanceRecord {
+  family: string;
+  discipline: string;
   movement: string;
-  value: number;
-  unit: 'kg' | 's' | 'm' | 'reps';
+  metricType: MetricType;
+  value?: number;
+  unit?: MetricUnit;
   videoHash: string;
   chunkManifest?: string;
-  tranche?: string;
   createdAt: string;
 }
 
@@ -134,20 +137,14 @@ export async function verifyBlobSignature(signed: SignedBlob): Promise<boolean> 
   return verifySig(pub, payload, sig);
 }
 
-export { assignTranche } from '@/lib/tranches';
-
 export async function publishPerformance(
   agent: AtpAgent,
   performance: PerformanceRecord
 ): Promise<string> {
-  const tranche =
-    performance.tranche ??
-    assignTranche(performance.movement, performance.value, performance.unit);
-  const record: PerformanceRecord = { ...performance, tranche };
   const res = await agent.com.atproto.repo.createRecord({
     repo: agent.session!.did,
     collection: PERFORMANCE_LEXICON,
-    record: record as unknown as Record<string, unknown>,
+    record: performance as unknown as Record<string, unknown>,
   });
   return res.data.uri;
 }
@@ -264,8 +261,8 @@ async function listAllRecords(
 }
 
 export async function getFeed(
-  movement: string,
-  tranche: string | undefined,
+  discipline: string,
+  movement: string | undefined,
   pdsUrls: string[],
   logs?: string[]
 ): Promise<Array<{ uri: string; record: PerformanceRecord; source: string }>> {
@@ -274,7 +271,10 @@ export async function getFeed(
     logs?.push(message);
   };
 
-  log(`movement=${movement} tranche=${tranche ?? '(any)'}`);
+  const disciplineSlug = discipline.trim().toLowerCase();
+  const movementSlug = movement ? normalizeMovement(movement) : undefined;
+
+  log(`discipline=${disciplineSlug} movement=${movementSlug ?? '(any)'}`);
   log(`PDS URLs: ${JSON.stringify(pdsUrls)}`);
 
   if (!pdsUrls.length) {
@@ -300,14 +300,23 @@ export async function getFeed(
 
           for (const item of records) {
             const record = item.value as unknown as PerformanceRecord;
-            if (record.movement.trim().toLowerCase() !== movement.trim().toLowerCase()) {
+            if (!record.discipline || !record.movement) {
+              log(`Skip ${item.uri}: record format invalide`);
+              continue;
+            }
+            if (record.discipline.trim().toLowerCase() !== disciplineSlug) {
               log(
-                `Skip ${item.uri}: movement "${record.movement}" ≠ "${movement}"`
+                `Skip ${item.uri}: discipline "${record.discipline}" ≠ "${disciplineSlug}"`
               );
               continue;
             }
-            if (tranche && record.tranche !== tranche) {
-              log(`Skip ${item.uri}: tranche "${record.tranche}" ≠ "${tranche}"`);
+            if (
+              movementSlug &&
+              normalizeMovement(record.movement) !== movementSlug
+            ) {
+              log(
+                `Skip ${item.uri}: movement "${record.movement}" ≠ "${movementSlug}"`
+              );
               continue;
             }
             log(`Match ${item.uri}`);
@@ -365,14 +374,30 @@ export async function getPerformancesByDid(
 }
 
 export async function getLeaderboard(
+  discipline: string,
   movement: string,
-  tranche: string,
   pdsUrls: string[]
 ): Promise<Array<{ uri: string; record: PerformanceRecord }>> {
-  const feed = await getFeed(movement, tranche, pdsUrls);
+  const feed = await getFeed(discipline, movement, pdsUrls);
+  const metricType = feed[0]?.record.metricType ?? 'score';
   return feed
+    .filter(({ record }) => record.value != null)
     .map(({ uri, record }) => ({ uri, record }))
-    .sort((a, b) => b.record.value - a.record.value);
+    .sort((a, b) =>
+      compareMetricValues(metricType, b.record.value!, a.record.value!)
+    );
+}
+
+export async function listMovementsForDiscipline(
+  discipline: string,
+  pdsUrls: string[]
+): Promise<string[]> {
+  const feed = await getFeed(discipline, undefined, pdsUrls);
+  const movements = new Set<string>();
+  for (const { record } of feed) {
+    movements.add(normalizeMovement(record.movement));
+  }
+  return Array.from(movements).sort((a, b) => a.localeCompare(b));
 }
 
 export async function postComment(

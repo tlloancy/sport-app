@@ -1,5 +1,5 @@
-import path from 'path';
 import { test, expect } from '@playwright/test';
+import path from 'path';
 
 test.describe('upload flow', () => {
   test.setTimeout(120_000);
@@ -13,7 +13,8 @@ test.describe('upload flow', () => {
 
     await page.goto('/upload');
     await page.getByTestId('upload-file').setInputFiles(samplePath);
-    await page.getByTestId('upload-movement').selectOption('snatch');
+    await page.getByTestId('upload-discipline').selectOption('halterophilie');
+    await page.getByTestId('upload-movement').fill('snatch');
     await page.getByTestId('upload-value').fill(String(uniqueValue));
     await page.getByTestId('upload-unit').selectOption('kg');
     await page.getByTestId('upload-submit').click();
@@ -25,7 +26,7 @@ test.describe('upload flow', () => {
     const deadline = Date.now() + 30_000;
     let onFeed = false;
     while (Date.now() < deadline) {
-      await page.goto('/snatch');
+      await page.goto('/halterophilie');
       if (await page.getByTestId(`feed-item-${rkey}`).isVisible().catch(() => false)) {
         onFeed = true;
         break;

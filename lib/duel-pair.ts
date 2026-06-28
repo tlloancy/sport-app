@@ -1,5 +1,5 @@
 import { getFeed, resolvePeerFromDID, type PerformanceRecord } from '@/lib/atproto';
-import { getEloScoresForUris, isActiveCategory } from '@/lib/db';
+import { getEloScoresForUris, isActiveDiscipline, normalizeMovement } from '@/lib/db';
 import { filterFeedItems } from '@/lib/feed-filter';
 import type { FeedEntry } from '@/lib/feed-pagination';
 import { getGatewayPeerId } from '@/lib/p2p-gateway';
@@ -8,7 +8,7 @@ import { pdsUrl, pdsUrls } from '@/lib/upload-agent';
 export type DuelPair = {
   a: FeedEntry;
   b: FeedEntry;
-  tranche: string;
+  movement: string;
 };
 
 async function toFeedEntry(
@@ -31,10 +31,12 @@ async function toFeedEntry(
     peerId,
     hashes: record.chunkManifest ? (JSON.parse(record.chunkManifest) as string[]) : [],
     record: {
+      family: record.family,
+      discipline: record.discipline,
       movement: record.movement,
+      metricType: record.metricType,
       value: record.value,
       unit: record.unit,
-      tranche: record.tranche,
       createdAt: record.createdAt,
       videoHash: record.videoHash,
     },
@@ -79,29 +81,28 @@ function pickLowestVotePair(
   return ties[Math.floor(Math.random() * ties.length)]!;
 }
 
-/** Duel pair: same category + tranche, lowest combined vote_count first. */
-export async function pickDuelPair(slug: string): Promise<DuelPair | null> {
-  if (!isActiveCategory(slug)) return null;
+/** Duel pair: same discipline + movement, lowest combined vote_count first. */
+export async function pickDuelPair(disciplineSlug: string): Promise<DuelPair | null> {
+  if (!isActiveDiscipline(disciplineSlug)) return null;
 
-  const raw = filterFeedItems(await getFeed(slug, undefined, pdsUrls()));
-  const withTranche = raw.filter((item) => item.record.tranche);
-  if (withTranche.length < 2) return null;
+  const raw = filterFeedItems(await getFeed(disciplineSlug, undefined, pdsUrls()));
+  if (raw.length < 2) return null;
 
-  const uris = withTranche.map((item) => item.uri);
+  const uris = raw.map((item) => item.uri);
   const eloMap = getEloScoresForUris(uris);
 
-  const byTranche = new Map<string, RawItem[]>();
-  for (const item of withTranche) {
-    const t = item.record.tranche!;
-    const list = byTranche.get(t) ?? [];
+  const byMovement = new Map<string, RawItem[]>();
+  for (const item of raw) {
+    const movement = normalizeMovement(item.record.movement);
+    const list = byMovement.get(movement) ?? [];
     list.push({ uri: item.uri, record: item.record });
-    byTranche.set(t, list);
+    byMovement.set(movement, list);
   }
 
-  const trancheEntries = Array.from(byTranche.entries()).filter(([, items]) => items.length >= 2);
-  if (trancheEntries.length === 0) return null;
+  const movementEntries = Array.from(byMovement.entries()).filter(([, items]) => items.length >= 2);
+  if (movementEntries.length === 0) return null;
 
-  trancheEntries.sort(([, poolA], [, poolB]) => {
+  movementEntries.sort(([, poolA], [, poolB]) => {
     const minA = Math.min(
       ...poolA.flatMap((a, i) =>
         poolA.slice(i + 1).map((b) => pairVoteSum(a, b, eloMap))
@@ -115,14 +116,14 @@ export async function pickDuelPair(slug: string): Promise<DuelPair | null> {
     return minA - minB;
   });
 
-  for (const [tranche, pool] of trancheEntries) {
+  for (const [movement, pool] of movementEntries) {
     const picked = pickLowestVotePair(pool, eloMap);
     if (!picked) continue;
     const [first, second] = picked;
     const peerCache = new Map<string, string>();
     const a = await toFeedEntry(first.uri, first.record, peerCache);
     const b = await toFeedEntry(second.uri, second.record, peerCache);
-    return { a, b, tranche };
+    return { a, b, movement };
   }
 
   return null;

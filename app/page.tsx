@@ -1,29 +1,24 @@
 export const dynamic = 'force-dynamic';
 
-import CategoryCard from '@/components/CategoryCard';
-import { loadCategorySummaries } from '@/lib/category-home';
-import { pdsUrls } from '@/lib/upload-agent';
+import FamilyCard from '@/components/FamilyCard';
+import { loadFamilySummaries } from '@/lib/category-home';
 import Link from 'next/link';
 
 export default async function HomePage() {
-  let categories: Awaited<ReturnType<typeof loadCategorySummaries>> = [];
+  let families: Awaited<ReturnType<typeof loadFamilySummaries>> = [];
   let error: string | null = null;
 
-  if (pdsUrls().length === 0) {
-    error = 'Aucune URL PDS configurée (PDS_URL vide).';
-  } else {
-    try {
-      categories = await loadCategorySummaries();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Chargement impossible';
-    }
+  try {
+    families = await loadFamilySummaries();
+  } catch (err) {
+    error = err instanceof Error ? err.message : 'Chargement impossible';
   }
 
   return (
     <main className="min-h-screen bg-white">
       <header className="mx-auto flex max-w-5xl items-end justify-between gap-4 px-6 py-8">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Sport</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Loading</h1>
           <p className="mt-2 text-neutral-600">Poste ta perf. Elle t&apos;appartient.</p>
         </div>
         <Link
@@ -37,15 +32,15 @@ export default async function HomePage() {
 
       {error ? (
         <p className="mx-auto max-w-5xl px-6 text-sm text-red-600">{error}</p>
-      ) : categories.length === 0 ? (
-        <p className="mx-auto max-w-5xl px-6 text-neutral-500">Aucune catégorie active.</p>
+      ) : families.length === 0 ? (
+        <p className="mx-auto max-w-5xl px-6 text-neutral-500">Aucune famille configurée.</p>
       ) : (
         <div
-          data-testid="category-grid"
+          data-testid="family-grid"
           className="mx-auto grid max-w-5xl grid-cols-1 gap-4 px-6 pb-12 sm:grid-cols-2 lg:grid-cols-3"
         >
-          {categories.map((category) => (
-            <CategoryCard key={category.slug} category={category} />
+          {families.map((family) => (
+            <FamilyCard key={family.slug} family={family} />
           ))}
         </div>
       )}

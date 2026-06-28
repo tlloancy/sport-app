@@ -1,9 +1,9 @@
 export const dynamic = 'force-dynamic';
 
 import AdminDashboard from '@/components/admin/AdminDashboard';
-import { listCategoriesForAdmin, listPerformancesForAdmin } from '@/lib/admin-data';
+import { listDisciplinesForAdmin, listPerformancesForAdmin } from '@/lib/admin-data';
 import { verifyAdminSessionToken, ADMIN_COOKIE } from '@/lib/admin-auth';
-import { listRecentReports } from '@/lib/db';
+import { listFamilies, listRecentReports } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
@@ -28,14 +28,16 @@ export default async function AdminDashboardPage() {
     performances = [];
   }
 
-  const categories = listCategoriesForAdmin();
+  const disciplines = listDisciplinesForAdmin();
+  const families = listFamilies().map(({ slug, label }) => ({ slug, label }));
 
   return (
     <main className="min-h-screen bg-white">
       <AdminDashboard
         initialReports={reports}
         initialPerformances={performances}
-        initialCategories={categories}
+        initialDisciplines={disciplines}
+        initialFamilies={families}
       />
     </main>
   );

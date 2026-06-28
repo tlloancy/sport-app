@@ -1,14 +1,14 @@
 import VideoPlayer from '@/components/VideoPlayer';
-import type { CategorySummary } from '@/lib/category-home';
+import type { DisciplineSummary } from '@/lib/category-home';
 import Link from 'next/link';
 
-export default function CategoryCard({ category }: { category: CategorySummary }) {
-  const { slug, label, perfCount, latest } = category;
+export default function DisciplineCard({ discipline }: { discipline: DisciplineSummary }) {
+  const { slug, label, perfCount, latest } = discipline;
 
   return (
     <Link
       href={`/${slug}`}
-      data-testid={`category-card-${slug}`}
+      data-testid={`discipline-card-${slug}`}
       className="group flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white transition-shadow hover:shadow-md"
     >
       <div className="relative aspect-video bg-neutral-950">

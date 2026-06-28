@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import FeedPaginator from '@/components/FeedPaginator';
-import { isActiveCategory, listActiveCategories } from '@/lib/db';
+import { getDiscipline, isActiveDiscipline } from '@/lib/db';
 import { loadFeedPage } from '@/lib/feed-server';
 import { FEED_PAGE_SIZE, type FeedPagePayload } from '@/lib/feed-pagination';
 import { pdsUrls } from '@/lib/upload-agent';
@@ -13,23 +13,23 @@ type PageProps = {
   searchParams: { page?: string };
 };
 
-export default async function CategoryFeedPage({ params, searchParams }: PageProps) {
+export default async function DisciplineFeedPage({ params, searchParams }: PageProps) {
   const slug = params.slug.toLowerCase();
   const page = Math.max(1, Number.parseInt(searchParams.page ?? '1', 10) || 1);
 
-  if (!isActiveCategory(slug)) {
+  if (!isActiveDiscipline(slug)) {
     notFound();
   }
 
-  const category = listActiveCategories().find((c) => c.slug === slug);
-  const label = category?.label ?? slug;
+  const discipline = getDiscipline(slug)!;
+  const label = discipline.label;
 
   let initial: FeedPagePayload = {
     page: 1,
     pageSize: FEED_PAGE_SIZE,
     totalPages: 1,
     total: 0,
-    movement: slug,
+    discipline: slug,
     items: [],
   };
   let feedError: string | null = null;

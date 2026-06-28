@@ -55,7 +55,7 @@ export default function FeedPaginator({ slug, label, initial }: FeedPaginatorPro
 
       try {
         const res = await fetch(
-          `/api/feed?movement=${encodeURIComponent(slug)}&page=${nextPage}`
+          `/api/feed?discipline=${encodeURIComponent(slug)}&page=${nextPage}`
         );
         const json = (await res.json()) as FeedPagePayload & { error?: string };
         if (!res.ok) {

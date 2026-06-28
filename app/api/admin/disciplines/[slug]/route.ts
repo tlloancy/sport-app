@@ -5,7 +5,6 @@ import { normalizeSlug, validateSlug } from '@/lib/category-validation';
 
 export const runtime = 'nodejs';
 
-/** @deprecated use /api/admin/disciplines/[slug] */
 export async function DELETE(
   req: NextRequest,
   { params }: { params: { slug: string } }

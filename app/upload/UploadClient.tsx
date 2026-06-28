@@ -28,9 +28,14 @@ import {
   UPLOAD_LIMITS_MESSAGE,
   UPLOAD_RULES,
 } from '@/lib/upload-limits';
+import {
+  defaultMetricUnit,
+  METRIC_LABELS,
+  METRIC_UNITS,
+  type MetricType,
+  type MetricUnit,
+} from '@/lib/metrics';
 
-const UNITS = ['kg', 's', 'm', 'reps'] as const;
-const OTHER_MOVEMENT = '__other__';
 const REDIRECT_DELAY_MS = 1000;
 
 const fieldClass =
@@ -199,15 +204,25 @@ function PhaseStatus({
   );
 }
 
+type DisciplineOption = {
+  slug: string;
+  label: string;
+  family: string;
+  metricType: MetricType;
+};
+
 export default function UploadClient() {
   const router = useRouter();
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const traceRef = useRef<TraceEntry[]>([]);
-  const [movementSelect, setMovementSelect] = useState('snatch');
-  const [customMovement, setCustomMovement] = useState('');
-  const [categories, setCategories] = useState<Array<{ slug: string; label: string }>>([]);
+  const [families, setFamilies] = useState<Array<{ slug: string; label: string }>>([]);
+  const [familySelect, setFamilySelect] = useState('sport');
+  const [disciplines, setDisciplines] = useState<DisciplineOption[]>([]);
+  const [disciplineSelect, setDisciplineSelect] = useState('halterophilie');
+  const [movement, setMovement] = useState('');
+  const [movementSuggestions, setMovementSuggestions] = useState<string[]>([]);
   const [value, setValue] = useState('35');
-  const [unit, setUnit] = useState<(typeof UNITS)[number]>('kg');
+  const [unit, setUnit] = useState<MetricUnit>('kg');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<UploadErrorPayload | null>(null);
   const [busy, setBusy] = useState(false);
@@ -224,22 +239,50 @@ export default function UploadClient() {
 
   const inProgress = phase === 'send' || phase === 'ffmpeg' || phase === 'publish';
 
-  const movement =
-    movementSelect === OTHER_MOVEMENT ? customMovement.trim() : movementSelect;
+  const selectedDiscipline = disciplines.find((d) => d.slug === disciplineSelect);
+  const metricType = selectedDiscipline?.metricType ?? 'weight';
+  const needsMetric = metricType !== 'none';
 
   useEffect(() => {
-    void fetch('/api/categories')
+    void fetch('/api/families')
       .then((res) => res.json())
-      .then((data: { categories?: Array<{ slug: string; label: string }> }) => {
-        const list = data.categories ?? [];
-        setCategories(list);
-        if (list.length > 0 && !list.some((c) => c.slug === movementSelect)) {
-          setMovementSelect(list[0]!.slug);
+      .then((data: { families?: Array<{ slug: string; label: string }> }) => {
+        const list = data.families ?? [];
+        setFamilies(list);
+        if (list.length > 0 && !list.some((f) => f.slug === familySelect)) {
+          setFamilySelect(list[0]!.slug);
         }
       })
       .catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial slug only
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial family only
   }, []);
+
+  useEffect(() => {
+    void fetch(`/api/disciplines?family=${encodeURIComponent(familySelect)}`)
+      .then((res) => res.json())
+      .then((data: { disciplines?: DisciplineOption[] }) => {
+        const list = data.disciplines ?? [];
+        setDisciplines(list);
+        if (list.length > 0 && !list.some((d) => d.slug === disciplineSelect)) {
+          setDisciplineSelect(list[0]!.slug);
+        }
+      })
+      .catch(() => undefined);
+  }, [familySelect, disciplineSelect]);
+
+  useEffect(() => {
+    const nextUnit = defaultMetricUnit(metricType);
+    if (nextUnit) setUnit(nextUnit);
+  }, [metricType]);
+
+  useEffect(() => {
+    void fetch(`/api/movements?discipline=${encodeURIComponent(disciplineSelect)}`)
+      .then((res) => res.json())
+      .then((data: { movements?: string[] }) => {
+        setMovementSuggestions(data.movements ?? []);
+      })
+      .catch(() => setMovementSuggestions([]));
+  }, [disciplineSelect]);
 
   const pushTrace = useCallback(
     (tag: string, message: string, opts?: { detail?: string; level?: TraceLevel }) => {
@@ -348,9 +391,19 @@ export default function UploadClient() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!movement) {
+    if (!movement.trim()) {
       fail({
         error: 'Indique un mouvement avant de publier.',
+        type: 'missing_file',
+        step: 'chunk',
+        status: 400,
+      });
+      return;
+    }
+
+    if (needsMetric && (!value || Number(value) <= 0)) {
+      fail({
+        error: 'Indique une valeur valide pour cette discipline.',
         type: 'missing_file',
         step: 'chunk',
         status: 400,
@@ -402,7 +455,7 @@ export default function UploadClient() {
     setSendPct(0);
 
     pushTrace('INIT', 'Session upload démarrée', {
-      detail: `${file.name} · ${formatBytes(file.size)} · ${movement} ${value} ${unit}`,
+      detail: `${file.name} · ${formatBytes(file.size)} · ${disciplineSelect} / ${movement.trim()}${needsMetric ? ` · ${value} ${unit}` : ''}`,
     });
     pushTrace('SYS', 'Ne quitte pas cette page pendant la publication', { level: 'warn' });
 
@@ -441,13 +494,17 @@ export default function UploadClient() {
         detail: `videoHash=${chunkData.videoHash.slice(0, 16)}…`,
       });
 
-      const pubBody = {
-        movement,
-        value: Number(value),
-        unit,
+      const pubBody: Record<string, unknown> = {
+        family: familySelect,
+        discipline: disciplineSelect,
+        movement: movement.trim().toLowerCase(),
         videoHash: chunkData.videoHash,
         chunkManifest: chunkData.chunkManifest,
       };
+      if (needsMetric) {
+        pubBody.value = Number(value);
+        pubBody.unit = unit;
+      }
       pushTrace('PDS', 'Payload performance', {
         detail: JSON.stringify(pubBody),
         level: 'dim',
@@ -569,61 +626,84 @@ export default function UploadClient() {
       ) : null}
 
       <select
-        data-testid="upload-movement"
-        value={movementSelect}
-        onChange={(e) => setMovementSelect(e.target.value)}
+        data-testid="upload-family"
+        value={familySelect}
+        onChange={(e) => setFamilySelect(e.target.value)}
         required
         disabled={busy}
         className={fieldClass}
       >
-        {categories.map((c) => (
-          <option key={c.slug} value={c.slug}>
-            {c.label}
+        {families.map((f) => (
+          <option key={f.slug} value={f.slug}>
+            {f.label}
           </option>
         ))}
-        {categories.length === 0 ? (
-          <option value="snatch">Snatch</option>
-        ) : null}
-        <option value={OTHER_MOVEMENT}>Autre…</option>
       </select>
 
-      {movementSelect === OTHER_MOVEMENT ? (
-        <input
-          data-testid="upload-movement-custom"
-          type="text"
-          value={customMovement}
-          onChange={(e) => setCustomMovement(e.target.value)}
-          placeholder="Nom du mouvement"
-          required
-          disabled={busy}
-          className={fieldClass}
-        />
-      ) : null}
+      <select
+        data-testid="upload-discipline"
+        value={disciplineSelect}
+        onChange={(e) => setDisciplineSelect(e.target.value)}
+        required
+        disabled={busy}
+        className={fieldClass}
+      >
+        {disciplines.map((d) => (
+          <option key={d.slug} value={d.slug}>
+            {d.label}
+          </option>
+        ))}
+      </select>
 
       <input
-        data-testid="upload-value"
-        type="number"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Valeur"
+        data-testid="upload-movement"
+        type="text"
+        list="upload-movement-suggestions"
+        value={movement}
+        onChange={(e) => setMovement(e.target.value)}
+        placeholder="Mouvement (ex. snatch, clean & jerk…)"
         required
         disabled={busy}
         className={fieldClass}
       />
-
-      <select
-        data-testid="upload-unit"
-        value={unit}
-        onChange={(e) => setUnit(e.target.value as (typeof UNITS)[number])}
-        disabled={busy}
-        className={fieldClass}
-      >
-        {UNITS.map((u) => (
-          <option key={u} value={u}>
-            {u}
-          </option>
+      <datalist id="upload-movement-suggestions">
+        {movementSuggestions.map((m) => (
+          <option key={m} value={m} />
         ))}
-      </select>
+      </datalist>
+
+      {needsMetric ? (
+        <>
+          <input
+            data-testid="upload-value"
+            type="number"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={METRIC_LABELS[metricType]}
+            required
+            disabled={busy}
+            className={fieldClass}
+          />
+
+          <select
+            data-testid="upload-unit"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as MetricUnit)}
+            disabled={busy}
+            className={fieldClass}
+          >
+            {METRIC_UNITS[metricType].map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : (
+        <p className="text-sm text-neutral-600">
+          Cette discipline ne demande pas de métrique — jugement par duel ELO.
+        </p>
+      )}
 
       {inProgress ? (
         <p

@@ -56,7 +56,10 @@ async function main() {
   }
 
   const perf: PerformanceRecord = {
+    family: 'sport',
+    discipline: 'halterophilie',
     movement: 'snatch',
+    metricType: 'weight',
     value: 42,
     unit: 'kg',
     videoHash: `hash-step13-${crypto.randomBytes(4).toString('hex')}`,

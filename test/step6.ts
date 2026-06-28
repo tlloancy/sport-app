@@ -20,12 +20,14 @@ async function main() {
   }
 
   const performance: PerformanceRecord = {
+    family: 'sport',
+    discipline: 'halterophilie',
     movement: 'snatch',
+    metricType: 'weight',
     value: 35,
     unit: 'kg',
     videoHash: 'fakehash123',
     chunkManifest: '[]',
-    tranche: 'T2',
     createdAt: new Date().toISOString(),
   };
 
@@ -33,7 +35,11 @@ async function main() {
   const retrieved = await getRecord(agent, uri);
   const record = retrieved.value as unknown as PerformanceRecord;
 
-  if (record.movement !== 'snatch' || record.value !== 35 || record.tranche !== 'T2') {
+  if (
+    record.movement !== 'snatch' ||
+    record.value !== 35 ||
+    record.discipline !== 'halterophilie'
+  ) {
     console.error('FAIL: record fields mismatch', record);
     process.exit(1);
   }
