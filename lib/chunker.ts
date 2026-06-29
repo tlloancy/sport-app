@@ -8,6 +8,7 @@ import {
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_DURATION_SEC,
   UPLOAD_LIMITS_MESSAGE,
+  describeUploadLimitError,
 } from '@/lib/upload-limits';
 
 export interface ChunkResult {
@@ -49,7 +50,7 @@ export function probeVideoDuration(inputPath: string): number {
 
 export function assertUploadWithinLimits(sizeBytes: number, durationSec: number): void {
   if (!isWithinUploadLimits(sizeBytes, durationSec)) {
-    throw new UploadLimitError();
+    throw new UploadLimitError(describeUploadLimitError(sizeBytes, durationSec));
   }
 }
 

@@ -203,9 +203,14 @@ export function classifyChunkError(err: unknown): UploadErrorPayload {
   const raw = err instanceof Error ? err.message : String(err);
   const lower = raw.toLowerCase();
 
-  if (lower.includes('trop longue') || lower.includes('too long') || lower.includes('50mb')) {
+  if (
+    lower.includes('trop lourde') ||
+    lower.includes('trop longue') ||
+    lower.includes('too long') ||
+    lower.includes('50mb')
+  ) {
     return withOrigin(
-      uploadErrorBody('chunk', 'upload_limit', UPLOAD_LIMITS_MESSAGE, 413, raw),
+      uploadErrorBody('chunk', 'upload_limit', raw.trim() || UPLOAD_LIMITS_MESSAGE, 413, raw),
       err
     );
   }

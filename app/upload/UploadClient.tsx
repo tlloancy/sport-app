@@ -22,10 +22,10 @@ import {
   type UploadPhase,
 } from '@/lib/upload-trace';
 import {
+  describeUploadLimitError,
   formatDurationSec,
   isWithinUploadLimits,
   probeClientVideoDuration,
-  UPLOAD_LIMITS_MESSAGE,
   UPLOAD_RULES,
 } from '@/lib/upload-limits';
 import {
@@ -374,9 +374,10 @@ export default function UploadClient({
           level: 'ok',
         });
       } else {
+        const limitMessage = describeUploadLimitError(picked.size, durationSec);
         setFileCheckStatus('reject');
-        setFileCheckMessage(UPLOAD_LIMITS_MESSAGE);
-        pushTrace('ERR', UPLOAD_LIMITS_MESSAGE, {
+        setFileCheckMessage(limitMessage);
+        pushTrace('ERR', limitMessage, {
           detail: `${formatBytes(picked.size)} · ${formatDurationSec(durationSec)}`,
           level: 'error',
         });
@@ -472,8 +473,13 @@ export default function UploadClient({
     }
 
     if (fileCheckStatus === 'reject') {
+      const limitMessage =
+        fileCheckMessage ??
+        (file
+          ? describeUploadLimitError(file.size, videoDurationSec ?? 0)
+          : 'Cette vidéo dépasse les limites d’upload.');
       fail({
-        error: fileCheckMessage ?? UPLOAD_LIMITS_MESSAGE,
+        error: limitMessage,
         type: 'upload_limit',
         step: 'chunk',
         status: 413,
