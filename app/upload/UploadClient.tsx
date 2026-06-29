@@ -35,6 +35,7 @@ import {
   type MetricType,
   type MetricUnit,
 } from '@/lib/metrics';
+import { uploadFieldLabels } from '@/lib/upload-field-labels';
 
 const REDIRECT_DELAY_MS = 1000;
 
@@ -218,10 +219,10 @@ export default function UploadClient() {
   const [families, setFamilies] = useState<Array<{ slug: string; label: string }>>([]);
   const [familySelect, setFamilySelect] = useState('sport');
   const [disciplines, setDisciplines] = useState<DisciplineOption[]>([]);
-  const [disciplineSelect, setDisciplineSelect] = useState('halterophilie');
+  const [disciplineSelect, setDisciplineSelect] = useState('');
   const [movement, setMovement] = useState('');
   const [movementSuggestions, setMovementSuggestions] = useState<string[]>([]);
-  const [value, setValue] = useState('35');
+  const [value, setValue] = useState('');
   const [unit, setUnit] = useState<MetricUnit>('kg');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<UploadErrorPayload | null>(null);
@@ -240,8 +241,12 @@ export default function UploadClient() {
   const inProgress = phase === 'send' || phase === 'ffmpeg' || phase === 'publish';
 
   const selectedDiscipline = disciplines.find((d) => d.slug === disciplineSelect);
-  const metricType = selectedDiscipline?.metricType ?? 'weight';
+  const metricType = selectedDiscipline?.metricType ?? 'none';
   const needsMetric = metricType !== 'none';
+  const hasDiscipline = disciplines.length > 0 && Boolean(selectedDiscipline);
+  const fieldLabels = uploadFieldLabels(familySelect, metricType);
+  const movementListId =
+    movementSuggestions.length > 0 ? 'upload-movement-suggestions' : undefined;
 
   useEffect(() => {
     void fetch('/api/families')
@@ -263,19 +268,24 @@ export default function UploadClient() {
       .then((data: { disciplines?: DisciplineOption[] }) => {
         const list = data.disciplines ?? [];
         setDisciplines(list);
-        if (list.length > 0 && !list.some((d) => d.slug === disciplineSelect)) {
-          setDisciplineSelect(list[0]!.slug);
-        }
+        setDisciplineSelect((prev) => {
+          if (list.some((d) => d.slug === prev)) return prev;
+          return list[0]?.slug ?? '';
+        });
+        setMovement('');
       })
-      .catch(() => undefined);
-  }, [familySelect, disciplineSelect]);
+      .catch(() => {
+        setDisciplines([]);
+        setDisciplineSelect('');
+        setMovement('');
+      });
+  }, [familySelect]);
 
   useEffect(() => {
-    const nextUnit = defaultMetricUnit(metricType);
-    if (nextUnit) setUnit(nextUnit);
-  }, [metricType]);
-
-  useEffect(() => {
+    if (!disciplineSelect) {
+      setMovementSuggestions([]);
+      return;
+    }
     void fetch(`/api/movements?discipline=${encodeURIComponent(disciplineSelect)}`)
       .then((res) => res.json())
       .then((data: { movements?: string[] }) => {
@@ -283,6 +293,19 @@ export default function UploadClient() {
       })
       .catch(() => setMovementSuggestions([]));
   }, [disciplineSelect]);
+
+  useEffect(() => {
+    const nextUnit = defaultMetricUnit(metricType);
+    if (nextUnit) setUnit(nextUnit);
+  }, [metricType]);
+
+  useEffect(() => {
+    if (!needsMetric) {
+      setValue('');
+      return;
+    }
+    setValue((prev) => (prev.trim() ? prev : metricType === 'weight' ? '35' : '1'));
+  }, [needsMetric, metricType]);
 
   const pushTrace = useCallback(
     (tag: string, message: string, opts?: { detail?: string; level?: TraceLevel }) => {
@@ -391,9 +414,19 @@ export default function UploadClient() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!hasDiscipline) {
+      fail({
+        error: 'Aucune discipline disponible pour cette famille.',
+        type: 'missing_file',
+        step: 'chunk',
+        status: 400,
+      });
+      return;
+    }
+
     if (!movement.trim()) {
       fail({
-        error: 'Indique un mouvement avant de publier.',
+        error: `Indique ${fieldLabels.movementLabel.toLowerCase()} avant de publier.`,
         type: 'missing_file',
         step: 'chunk',
         status: 400,
@@ -632,6 +665,7 @@ export default function UploadClient() {
         required
         disabled={busy}
         className={fieldClass}
+        aria-label="Famille"
       >
         {families.map((f) => (
           <option key={f.slug} value={f.slug}>
@@ -640,57 +674,79 @@ export default function UploadClient() {
         ))}
       </select>
 
-      <select
-        data-testid="upload-discipline"
-        value={disciplineSelect}
-        onChange={(e) => setDisciplineSelect(e.target.value)}
-        required
-        disabled={busy}
-        className={fieldClass}
-      >
-        {disciplines.map((d) => (
-          <option key={d.slug} value={d.slug}>
-            {d.label}
-          </option>
-        ))}
-      </select>
+      {disciplines.length === 0 ? (
+        <p
+          data-testid="upload-no-discipline"
+          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          Aucune discipline pour cette famille — ajoute-en une depuis l&apos;admin.
+        </p>
+      ) : (
+        <select
+          data-testid="upload-discipline"
+          value={disciplineSelect}
+          onChange={(e) => {
+            setDisciplineSelect(e.target.value);
+            setMovement('');
+          }}
+          required
+          disabled={busy}
+          className={fieldClass}
+          aria-label="Discipline"
+        >
+          {disciplines.map((d) => (
+            <option key={d.slug} value={d.slug}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      )}
 
-      <input
-        data-testid="upload-movement"
-        type="text"
-        list="upload-movement-suggestions"
-        value={movement}
-        onChange={(e) => setMovement(e.target.value)}
-        placeholder="Mouvement (ex. snatch, clean & jerk…)"
-        required
-        disabled={busy}
-        className={fieldClass}
-      />
-      <datalist id="upload-movement-suggestions">
-        {movementSuggestions.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
+      <label className="flex flex-col gap-1.5 text-sm font-medium text-neutral-800">
+        {fieldLabels.movementLabel}
+        <input
+          data-testid="upload-movement"
+          type="text"
+          list={movementListId}
+          value={movement}
+          onChange={(e) => setMovement(e.target.value)}
+          placeholder={fieldLabels.movementPlaceholder}
+          required
+          disabled={busy || !hasDiscipline}
+          className={fieldClass}
+        />
+      </label>
+      {movementListId ? (
+        <datalist id={movementListId}>
+          {movementSuggestions.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+      ) : null}
 
       {needsMetric ? (
         <>
-          <input
-            data-testid="upload-value"
-            type="number"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder={METRIC_LABELS[metricType]}
-            required
-            disabled={busy}
-            className={fieldClass}
-          />
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-neutral-800">
+            {METRIC_LABELS[metricType]}
+            <input
+              data-testid="upload-value"
+              type="number"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={METRIC_LABELS[metricType]}
+              required
+              disabled={busy || !hasDiscipline}
+              className={fieldClass}
+            />
+          </label>
 
           <select
             data-testid="upload-unit"
             value={unit}
             onChange={(e) => setUnit(e.target.value as MetricUnit)}
-            disabled={busy}
+            disabled={busy || !hasDiscipline}
             className={fieldClass}
+            aria-label="Unité"
           >
             {METRIC_UNITS[metricType].map((u) => (
               <option key={u} value={u}>
@@ -701,7 +757,8 @@ export default function UploadClient() {
         </>
       ) : (
         <p className="text-sm text-neutral-600">
-          Cette discipline ne demande pas de métrique — jugement par duel ELO.
+          {fieldLabels.metricHint ??
+            'Cette discipline ne demande pas de métrique — jugement par duel ELO.'}
         </p>
       )}
 
@@ -799,7 +856,12 @@ export default function UploadClient() {
       <button
         data-testid="upload-submit"
         type="submit"
-        disabled={busy || fileCheckStatus === 'reject' || fileCheckStatus === 'checking'}
+        disabled={
+          busy ||
+          !hasDiscipline ||
+          fileCheckStatus === 'reject' ||
+          fileCheckStatus === 'checking'
+        }
         className="mt-2 h-11 rounded-md bg-neutral-900 text-sm font-medium text-white disabled:bg-neutral-400 disabled:opacity-100"
       >
         {buttonLabel()}

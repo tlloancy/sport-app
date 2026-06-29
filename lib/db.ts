@@ -60,7 +60,14 @@ const SEED_DISCIPLINES: Array<{
   label: string;
   family: string;
   metric_type: MetricType;
-}> = [{ slug: 'halterophilie', label: 'Haltérophilie', family: 'sport', metric_type: 'weight' }];
+}> = [
+  { slug: 'halterophilie', label: 'Haltérophilie', family: 'sport', metric_type: 'weight' },
+  { slug: 'jeu-video', label: 'Jeu vidéo', family: 'jeux', metric_type: 'none' },
+  { slug: 'recette', label: 'Recette', family: 'cuisine', metric_type: 'none' },
+  { slug: 'creation', label: 'Création', family: 'art', metric_type: 'none' },
+  { slug: 'morceau', label: 'Morceau', family: 'musique', metric_type: 'none' },
+  { slug: 'libre', label: 'Libre', family: 'autre', metric_type: 'none' },
+];
 
 const RESERVED_DISCIPLINE_SLUGS = new Set(SEED_FAMILIES.map((f) => f.slug));
 
@@ -138,14 +145,10 @@ function seedFamilies(database: Database.Database) {
   }
 }
 
-function seedDisciplines(database: Database.Database) {
-  const row = database.prepare('SELECT COUNT(*) AS count FROM disciplines').get() as {
-    count: number;
-  };
-  if (row.count > 0) return;
-
+function ensureSeedDisciplines(database: Database.Database) {
   const insert = database.prepare(
-    'INSERT INTO disciplines (slug, label, family, metric_type, active, created_at) VALUES (?, ?, ?, ?, 1, ?)'
+    `INSERT OR IGNORE INTO disciplines (slug, label, family, metric_type, active, created_at)
+     VALUES (?, ?, ?, ?, 1, ?)`
   );
   const now = new Date().toISOString();
   for (const discipline of SEED_DISCIPLINES) {
@@ -166,7 +169,7 @@ export function getDb(): Database.Database {
     db.pragma('journal_mode = WAL');
     initSchema(db);
     seedFamilies(db);
-    seedDisciplines(db);
+    ensureSeedDisciplines(db);
   }
   return db;
 }
