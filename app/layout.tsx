@@ -9,7 +9,7 @@ const geistSans = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'Sport',
+  title: 'Prove It',
   description: "Poste ta perf. Elle t'appartient.",
 };
 
