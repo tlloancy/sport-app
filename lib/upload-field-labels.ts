@@ -20,7 +20,7 @@ export function uploadFieldLabels(
     case 'cuisine':
       return {
         movementLabel: 'Recette',
-        movementPlaceholder: 'Nom du plat (ex. omelette, tarte au citron…)',
+        movementPlaceholder: 'Nom du plat (ex. oeuf dur, omelette, crêpe, salade…)',
         metricHint: 'Pas de métrique — jugement par duel.',
       };
     case 'art':
