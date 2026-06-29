@@ -9,7 +9,7 @@ import {
   normalizeMovementInput,
   validateMovement,
 } from '@/lib/category-validation';
-import { getDiscipline, isActiveDiscipline } from '@/lib/db';
+import { getDiscipline, isActiveDiscipline, insertPerformanceIndex } from '@/lib/db';
 import { validateMetricPayload, type MetricUnit } from '@/lib/metrics';
 import { getGatewayPeerId } from '@/lib/p2p-gateway';
 import { getUploadAgent } from '@/lib/upload-agent';
@@ -119,6 +119,7 @@ export async function POST(req: NextRequest) {
     const agent = await getUploadAgent();
     const uri = await publishPerformance(agent, performance);
     const { did, rkey } = parsePerformanceUri(uri);
+    insertPerformanceIndex(uri, did, rkey, disciplineSlug, performance.createdAt);
 
     const peerId = await getGatewayPeerId();
     if (peerId) {

@@ -5,7 +5,7 @@ import { AtpAgent } from '@atproto/api';
 import { getSigningDidKey, isValidDidDoc, type DidDocument } from '@atproto/common-web';
 import { Secp256k1Keypair, verifySignature } from '@atproto/crypto';
 import { verifySig } from '@atproto/crypto/dist/secp256k1/operations.js';
-import { normalizeMovement, getActiveDisciplineSlugs } from '@/lib/db';
+import { normalizeMovement, getActiveDisciplineSlugs, listPerformanceIndexByDid, insertPerformanceIndex } from '@/lib/db';
 import { compareMetricValues, isMetricType, type MetricType, type MetricUnit } from '@/lib/metrics';
 
 export const PERFORMANCE_LEXICON = 'app.sport.performance' as const;
@@ -239,7 +239,7 @@ async function listAllRepoDids(agent: AtpAgent): Promise<string[]> {
   return dids;
 }
 
-async function resolvePublisherDid(): Promise<string | null> {
+export async function resolvePublisherDid(): Promise<string | null> {
   const fromEnv = process.env.UPLOAD_DID?.trim();
   if (fromEnv) return fromEnv;
   try {
@@ -299,6 +299,15 @@ async function collectPerformanceRepoDids(
   return Array.from(dids);
 }
 
+function parseNumericValue(raw: unknown): number | undefined {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 function coercePerformanceRecord(value: unknown): PerformanceRecord | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
@@ -312,7 +321,11 @@ function coercePerformanceRecord(value: unknown): PerformanceRecord | null {
 
   const activeDisciplines = getActiveDisciplineSlugs();
   let discipline =
-    typeof raw.discipline === 'string' ? raw.discipline.trim().toLowerCase() : '';
+    typeof raw.discipline === 'string'
+      ? raw.discipline.trim().toLowerCase()
+      : typeof raw.category === 'string'
+        ? raw.category.trim().toLowerCase()
+        : '';
   let movement = movementRaw;
 
   // Legacy flat category: movement field was the discipline slug (e.g. "snatch").
@@ -321,7 +334,7 @@ function coercePerformanceRecord(value: unknown): PerformanceRecord | null {
     movement = movementRaw.toLowerCase();
   }
 
-  if (!discipline || !activeDisciplines.has(discipline)) return null;
+  if (!discipline) return null;
 
   const metricTypeRaw = typeof raw.metricType === 'string' ? raw.metricType : 'weight';
   const metricType: MetricType = isMetricType(metricTypeRaw) ? metricTypeRaw : 'weight';
@@ -340,18 +353,37 @@ function coercePerformanceRecord(value: unknown): PerformanceRecord | null {
     record.chunkManifest = raw.chunkManifest;
   }
 
-  if (metricType !== 'none' && typeof raw.value === 'number') {
-    record.value = raw.value;
-    if (typeof raw.unit === 'string') {
-      record.unit = raw.unit as MetricUnit;
+  if (metricType !== 'none') {
+    const value = parseNumericValue(raw.value);
+    if (value != null) {
+      record.value = value;
+      if (typeof raw.unit === 'string') {
+        record.unit = raw.unit as MetricUnit;
+      }
     }
   }
 
   return record;
 }
 
+function coercePerformanceRecordReason(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return 'not an object';
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.movement !== 'string' || !raw.movement.trim()) return 'movement missing';
+  if (typeof raw.videoHash !== 'string' || !raw.videoHash) return 'videoHash missing';
+  if (typeof raw.createdAt !== 'string' || !raw.createdAt) return 'createdAt missing';
+  const discipline =
+    typeof raw.discipline === 'string'
+      ? raw.discipline.trim()
+      : typeof raw.category === 'string'
+        ? raw.category.trim()
+        : '';
+  if (!discipline) return 'discipline/category missing';
+  return null;
+}
+
 /** Paginate com.atproto.repo.listRecords for one repo + collection. */
-async function listAllRecords(
+async function fetchRecordPages(
   agent: AtpAgent,
   repo: string,
   collection: string
@@ -363,12 +395,127 @@ async function listAllRecords(
       repo,
       collection,
       limit: 100,
+      reverse: true,
       cursor,
     });
     all.push(...page.data.records);
     cursor = page.data.cursor;
   } while (cursor);
   return all;
+}
+
+/** Paginate all records in a repo (no collection filter). */
+async function fetchAllRepoRecordPages(
+  agent: AtpAgent,
+  repo: string
+): Promise<Array<{ uri: string; value: unknown }>> {
+  const all: Array<{ uri: string; value: unknown }> = [];
+  let cursor: string | undefined;
+  do {
+    const page = await agent.api.com.atproto.repo.listRecords({
+      repo,
+      limit: 100,
+      reverse: true,
+      cursor,
+    } as { repo: string; collection: string; limit: number; reverse: boolean; cursor?: string });
+    all.push(...page.data.records);
+    cursor = page.data.cursor;
+  } while (cursor);
+  return all;
+}
+
+function filterCollectionRecords(
+  records: Array<{ uri: string; value: unknown }>,
+  collection: string
+): Array<{ uri: string; value: unknown }> {
+  const prefix = `/${collection}/`;
+  return records.filter((item) => item.uri.includes(prefix));
+}
+
+/** List performance records — collection index first, then whole-repo fallback. */
+async function listPerformanceRecords(
+  agent: AtpAgent,
+  repo: string,
+  logs?: string[]
+): Promise<Array<{ uri: string; value: unknown }>> {
+  const log = (message: string) => logs?.push(message);
+  const byUri = new Map<string, { uri: string; value: unknown }>();
+
+  const merge = (records: Array<{ uri: string; value: unknown }>) => {
+    for (const item of records) {
+      byUri.set(item.uri, item);
+    }
+  };
+
+  const byCollection = await fetchRecordPages(agent, repo, PERFORMANCE_LEXICON);
+  merge(byCollection);
+  log(`listRecords(collection): ${byCollection.length} record(s)`);
+
+  try {
+    const wholeRepo = filterCollectionRecords(
+      await fetchAllRepoRecordPages(agent, repo),
+      PERFORMANCE_LEXICON
+    );
+    log(`listRecords(repo-wide): ${wholeRepo.length} performance record(s)`);
+    if (wholeRepo.length > byUri.size) {
+      log(`repo-wide listing found ${wholeRepo.length - byUri.size} extra record(s)`);
+      merge(wholeRepo);
+    }
+  } catch (err) {
+    log(
+      `listRecords(repo-wide) failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  try {
+    const described = await agent.com.atproto.repo.describeRepo({ repo });
+    log(`describeRepo: ${JSON.stringify(described.data.collections ?? [])}`);
+  } catch {
+    // describeRepo optional on some PDS builds
+  }
+
+  const listedUris = new Set(byUri.keys());
+  for (const entry of listPerformanceIndexByDid(repo)) {
+    if (listedUris.has(entry.uri)) continue;
+    try {
+      const res = await agent.com.atproto.repo.getRecord({
+        repo,
+        collection: PERFORMANCE_LEXICON,
+        rkey: entry.rkey,
+      });
+      byUri.set(res.data.uri, { uri: res.data.uri, value: res.data.value });
+      log(`getRecord index fallback: ${res.data.uri}`);
+    } catch (err) {
+      log(
+        `getRecord index fallback failed for ${entry.rkey}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+  }
+
+  return Array.from(byUri.values());
+}
+
+/** Fetch one performance by rkey and persist in local index (when listRecords misses it). */
+export async function indexPerformanceByRkey(
+  agent: AtpAgent,
+  did: string,
+  rkey: string
+): Promise<{ uri: string; record: PerformanceRecord } | null> {
+  try {
+    const res = await agent.com.atproto.repo.getRecord({
+      repo: did,
+      collection: PERFORMANCE_LEXICON,
+      rkey,
+    });
+    const record = coercePerformanceRecord(res.data.value);
+    if (!record) return null;
+    insertPerformanceIndex(res.data.uri, did, rkey, record.discipline, record.createdAt);
+    return { uri: res.data.uri, record };
+  } catch {
+    return null;
+  }
 }
 
 export async function getFeed(
@@ -406,13 +553,19 @@ export async function getFeed(
       for (const did of repoDids) {
         log(`Scanning DID: ${did}`);
         try {
-          const records = await listAllRecords(agent, did, PERFORMANCE_LEXICON);
+          const records = await listPerformanceRecords(agent, did, logs);
           log(`Found ${records.length} records for ${did} (all pages)`);
 
           for (const item of records) {
             const record = coercePerformanceRecord(item.value);
             if (!record) {
-              log(`Skip ${item.uri}: record format invalide`);
+              const reason = coercePerformanceRecordReason(item.value) ?? 'unknown';
+              log(`Skip ${item.uri}: record format invalide (${reason})`);
+              continue;
+            }
+            const activeDisciplines = getActiveDisciplineSlugs();
+            if (!activeDisciplines.has(record.discipline.trim().toLowerCase())) {
+              log(`Skip ${item.uri}: discipline "${record.discipline}" inactive`);
               continue;
             }
             if (record.discipline.trim().toLowerCase() !== disciplineSlug) {
@@ -465,7 +618,7 @@ export async function getPerformancesByDid(
   for (const pdsUrl of pdsUrls) {
     try {
       const agent = new AtpAgent({ service: pdsUrl });
-      const records = await listAllRecords(agent, did, PERFORMANCE_LEXICON);
+      const records = await listPerformanceRecords(agent, did);
       for (const item of records) {
         const record = coercePerformanceRecord(item.value);
         if (!record) continue;
@@ -548,7 +701,7 @@ export async function getComments(
     const agent = new AtpAgent({ service: pdsUrl });
     const repoDids = await listAllRepoDids(agent);
     for (const did of repoDids) {
-      const records = await listAllRecords(agent, did, COMMENT_LEXICON);
+      const records = await fetchRecordPages(agent, did, COMMENT_LEXICON);
       for (const item of records) {
         const record = item.value as unknown as CommentRecord;
         if (record.performanceUri !== performanceUri) continue;

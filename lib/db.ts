@@ -38,6 +38,14 @@ export type ReportRow = {
   created_at: string;
 };
 
+export type PerformanceIndexRow = {
+  uri: string;
+  did: string;
+  rkey: string;
+  discipline: string;
+  created_at: string;
+};
+
 const SEED_FAMILIES: Array<Omit<FamilyRow, never>> = [
   { slug: 'sport', label: 'Sport', emoji: '⚡', sort_order: 1 },
   { slug: 'cuisine', label: 'Cuisine', emoji: '🍳', sort_order: 2 },
@@ -105,6 +113,16 @@ function initSchema(database: Database.Database) {
       anon_id TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS performance_index (
+      uri TEXT PRIMARY KEY,
+      did TEXT NOT NULL,
+      rkey TEXT NOT NULL,
+      discipline TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS performance_index_did ON performance_index(did);
   `);
 }
 
@@ -373,4 +391,29 @@ export function insertReport(uri: string, reason: string | null, anonId: string)
   getDb()
     .prepare('INSERT INTO reports (uri, reason, anon_id, created_at) VALUES (?, ?, ?, ?)')
     .run(uri, reason, anonId, new Date().toISOString());
+}
+
+/** Local index of published performances (belt-and-suspenders when PDS listRecords lags). */
+export function insertPerformanceIndex(
+  uri: string,
+  did: string,
+  rkey: string,
+  discipline: string,
+  createdAt: string
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO performance_index (uri, did, rkey, discipline, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(uri) DO NOTHING`
+    )
+    .run(uri, did, rkey, discipline.toLowerCase(), createdAt);
+}
+
+export function listPerformanceIndexByDid(did: string): PerformanceIndexRow[] {
+  return getDb()
+    .prepare(
+      'SELECT uri, did, rkey, discipline, created_at FROM performance_index WHERE did = ? ORDER BY created_at DESC'
+    )
+    .all(did) as PerformanceIndexRow[];
 }
