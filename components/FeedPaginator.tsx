@@ -4,10 +4,12 @@ import FeedItemCard from '@/components/FeedItemCard';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FeedPagePayload } from '@/lib/feed-pagination';
+import { buildUploadHref, familyHref } from '@/lib/upload-links';
 
 type FeedPaginatorProps = {
   slug: string;
   label: string;
+  family: string;
   initial: FeedPagePayload;
 };
 
@@ -30,7 +32,7 @@ function PageIndicator({ page, totalPages }: { page: number; totalPages: number 
   );
 }
 
-export default function FeedPaginator({ slug, label, initial }: FeedPaginatorProps) {
+export default function FeedPaginator({ slug, label, family, initial }: FeedPaginatorProps) {
   const [data, setData] = useState<FeedPagePayload>(initial);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,9 +187,9 @@ export default function FeedPaginator({ slug, label, initial }: FeedPaginatorPro
             Duel
           </Link>
           <Link
-            href="/"
+            href={familyHref(family)}
             className="text-sm text-neutral-500 transition-colors hover:text-neutral-900"
-            aria-label="Accueil"
+            aria-label="Retour à la famille"
           >
             ←
           </Link>
@@ -215,7 +217,10 @@ export default function FeedPaginator({ slug, label, initial }: FeedPaginatorPro
           className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 text-neutral-500"
         >
           <p>Sois le premier.</p>
-          <Link href="/upload" className="text-sm text-neutral-900 underline underline-offset-2">
+          <Link
+            href={buildUploadHref(family, slug)}
+            className="text-sm text-neutral-900 underline underline-offset-2"
+          >
             + Perf
           </Link>
         </div>

@@ -36,8 +36,14 @@ import {
   type MetricUnit,
 } from '@/lib/metrics';
 import { uploadFieldLabels } from '@/lib/upload-field-labels';
+import { disciplineFeedHref } from '@/lib/upload-links';
 
 const REDIRECT_DELAY_MS = 1000;
+
+type UploadClientProps = {
+  initialFamily?: string;
+  initialDiscipline?: string;
+};
 
 const fieldClass =
   'w-full rounded-md border border-neutral-300 bg-white px-3 py-2.5 text-neutral-900 outline-none focus:border-neutral-900';
@@ -212,12 +218,18 @@ type DisciplineOption = {
   metricType: MetricType;
 };
 
-export default function UploadClient() {
+export default function UploadClient({
+  initialFamily,
+  initialDiscipline,
+}: UploadClientProps = {}) {
   const router = useRouter();
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const traceRef = useRef<TraceEntry[]>([]);
+  const pendingDiscipline = useRef(initialDiscipline?.trim().toLowerCase());
   const [families, setFamilies] = useState<Array<{ slug: string; label: string }>>([]);
-  const [familySelect, setFamilySelect] = useState('sport');
+  const [familySelect, setFamilySelect] = useState(
+    () => initialFamily?.trim().toLowerCase() ?? 'sport'
+  );
   const [disciplines, setDisciplines] = useState<DisciplineOption[]>([]);
   const [disciplineSelect, setDisciplineSelect] = useState('');
   const [movement, setMovement] = useState('');
@@ -269,6 +281,11 @@ export default function UploadClient() {
         const list = data.disciplines ?? [];
         setDisciplines(list);
         setDisciplineSelect((prev) => {
+          const pending = pendingDiscipline.current;
+          if (pending && list.some((d) => d.slug === pending)) {
+            pendingDiscipline.current = undefined;
+            return pending;
+          }
           if (list.some((d) => d.slug === prev)) return prev;
           return list[0]?.slug ?? '';
         });
@@ -585,11 +602,13 @@ export default function UploadClient() {
         detail: `did=${result.did} rkey=${result.rkey}`,
         level: 'ok',
       });
-      pushTrace('SYS', `Redirection dans ${REDIRECT_DELAY_MS / 1000}s`, { level: 'dim' });
+      pushTrace('SYS', `Redirection vers ${disciplineSelect} dans ${REDIRECT_DELAY_MS / 1000}s`, {
+        level: 'dim',
+      });
 
       redirectTimer.current = setTimeout(() => {
-        pushTrace('SYS', 'Redirection vers la fiche performance', { level: 'dim' });
-        router.push(performanceHref(result));
+        pushTrace('SYS', `Redirection vers le feed ${disciplineSelect}`, { level: 'dim' });
+        router.push(disciplineFeedHref(disciplineSelect));
       }, REDIRECT_DELAY_MS);
     } catch (err) {
       if (err instanceof UploadFailure) {
@@ -849,7 +868,20 @@ export default function UploadClient() {
           >
             Voir la performance
           </Link>
-          <p className="mt-1 text-xs text-green-800">Redirection automatique dans 1 seconde…</p>
+          <p className="mt-1 text-xs text-green-800">
+            Redirection vers le feed dans 1 seconde…{' '}
+            <Link
+              data-testid="upload-success-link"
+              href={disciplineFeedHref(disciplineSelect)}
+              className="underline"
+            >
+              Voir le feed
+            </Link>
+            {' · '}
+            <Link href={performanceHref(published)} className="underline">
+              Fiche perf
+            </Link>
+          </p>
         </div>
       ) : null}
 

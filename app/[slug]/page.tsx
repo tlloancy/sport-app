@@ -59,7 +59,12 @@ export default async function DisciplineFeedPage({ params, searchParams }: PageP
           </Link>
         </div>
       ) : (
-        <FeedPaginator slug={slug} label={label} initial={initial} />
+        <FeedPaginator
+          slug={slug}
+          label={label}
+          family={discipline.family}
+          initial={initial}
+        />
       )}
     </main>
   );

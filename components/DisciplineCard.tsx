@@ -1,13 +1,15 @@
 import VideoPlayer from '@/components/VideoPlayer';
 import type { DisciplineSummary } from '@/lib/category-home';
+import { buildUploadHref } from '@/lib/upload-links';
 import Link from 'next/link';
 
 export default function DisciplineCard({ discipline }: { discipline: DisciplineSummary }) {
-  const { slug, label, perfCount, latest } = discipline;
+  const { slug, label, perfCount, latest, family } = discipline;
+  const href = perfCount > 0 ? `/${slug}` : buildUploadHref(family, slug);
 
   return (
     <Link
-      href={`/${slug}`}
+      href={href}
       data-testid={`discipline-card-${slug}`}
       className="group flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white transition-shadow hover:shadow-md"
     >
@@ -29,7 +31,11 @@ export default function DisciplineCard({ discipline }: { discipline: DisciplineS
       <div className="px-4 py-3">
         <h2 className="text-base font-semibold tracking-tight text-neutral-900">{label}</h2>
         <p className="mt-1 text-sm text-neutral-500">
-          {perfCount === 1 ? '1 perf' : `${perfCount} perf`}
+          {perfCount === 0
+            ? 'Sois le premier →'
+            : perfCount === 1
+              ? '1 perf'
+              : `${perfCount} perf`}
         </p>
       </div>
     </Link>

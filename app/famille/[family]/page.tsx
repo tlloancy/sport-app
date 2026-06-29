@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import DisciplineCard from '@/components/DisciplineCard';
 import { loadDisciplineSummaries } from '@/lib/category-home';
 import { getFamily, isValidFamily } from '@/lib/db';
+import { buildUploadHref } from '@/lib/upload-links';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -33,10 +34,20 @@ export default async function FamilyPage({ params }: PageProps) {
         <Link href="/" className="text-sm text-neutral-500 hover:text-neutral-900">
           ← Accueil
         </Link>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">
-          {family.emoji} {family.label}
-        </h1>
-        <p className="mt-2 text-neutral-600">Choisis une discipline.</p>
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              {family.emoji} {family.label}
+            </h1>
+            <p className="mt-2 text-neutral-600">Choisis une discipline.</p>
+          </div>
+          <Link
+            href={buildUploadHref(familySlug)}
+            className="inline-flex h-10 items-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white"
+          >
+            + Perf
+          </Link>
+        </div>
       </header>
 
       {error ? (
