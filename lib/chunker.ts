@@ -74,7 +74,7 @@ function segmentToHls(inputPath: string, tmp: string): void {
   ].join(' ');
 
   try {
-    runFfmpeg(`-i "${inputPath}" -c copy -an ${hlsOut}`);
+    runFfmpeg(`-i "${inputPath}" -c:v copy -c:a copy ${hlsOut}`);
     if (fs.readdirSync(tmp).some((f) => f.endsWith('.ts'))) {
       return;
     }
@@ -87,7 +87,7 @@ function segmentToHls(inputPath: string, tmp: string): void {
   }
 
   runFfmpeg(
-    `-i "${inputPath}" -c:v libx264 -preset ultrafast -tune zerolatency -threads 0 -pix_fmt yuv420p -g 30 -an ${hlsOut}`
+    `-i "${inputPath}" -c:v libx264 -preset ultrafast -tune zerolatency -threads 0 -pix_fmt yuv420p -g 30 -c:a aac -b:a 128k -ac 2 ${hlsOut}`
   );
 }
 

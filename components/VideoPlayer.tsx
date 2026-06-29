@@ -60,12 +60,23 @@ export default function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const shouldPlayRef = useRef(false);
+  const userUnmutedRef = useRef(false);
   const wasmReadyRef = useRef(false);
   const blobUrlsRef = useRef<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   const wantsPlayback = autoPlay || viewportAutoplay;
+
+  function applyAutoplayMute(video: HTMLVideoElement) {
+    if (!userUnmutedRef.current) {
+      video.muted = true;
+    }
+  }
+
+  useEffect(() => {
+    userUnmutedRef.current = false;
+  }, [chunkManifest]);
 
   useEffect(() => {
     if (!viewportAutoplay) return undefined;
@@ -78,6 +89,7 @@ export default function VideoPlayer({
       shouldPlayRef.current = visible;
       if (!ready) return;
       if (visible) {
+        applyAutoplayMute(video);
         video.play().catch(() => undefined);
       } else {
         video.pause();
@@ -161,6 +173,7 @@ export default function VideoPlayer({
       setReady(true);
       const playNow = autoPlay || (viewportAutoplay && shouldPlayRef.current);
       if (playNow) {
+        applyAutoplayMute(video);
         video.play().catch(() => undefined);
       }
     });
@@ -184,10 +197,16 @@ export default function VideoPlayer({
         data-testid="video-player"
         controls
         playsInline
-        muted
+        defaultMuted={wantsPlayback}
         loop={loop}
         preload={wantsPlayback ? 'auto' : 'metadata'}
         autoPlay={autoPlay && !viewportAutoplay}
+        onVolumeChange={(event) => {
+          const video = event.currentTarget;
+          if (!video.muted && video.volume > 0) {
+            userUnmutedRef.current = true;
+          }
+        }}
         className={fill ? 'h-full w-full bg-neutral-900 object-contain' : 'w-full bg-neutral-900'}
       />
       {error ? (

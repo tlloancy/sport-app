@@ -19,10 +19,9 @@ export default function HomeRecentCard({ item }: { item: FeedEntry }) {
   });
 
   return (
-    <Link
-      href={href}
+    <article
       data-testid={`home-recent-${item.rkey}`}
-      className="group flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white transition-shadow hover:shadow-md"
+      className="flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white transition-shadow hover:shadow-md"
     >
       <div className="relative aspect-video bg-neutral-950">
         {item.hashes.length > 0 ? (
@@ -30,8 +29,9 @@ export default function HomeRecentCard({ item }: { item: FeedEntry }) {
             chunkManifest={item.hashes}
             peers={[item.peerId]}
             fill
+            viewportAutoplay
+            loop
             autoPlay={false}
-            viewportAutoplay={false}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-neutral-500">
@@ -39,7 +39,10 @@ export default function HomeRecentCard({ item }: { item: FeedEntry }) {
           </div>
         )}
       </div>
-      <div className="flex items-start justify-between gap-3 px-4 py-3">
+      <Link
+        href={href}
+        className="flex items-start justify-between gap-3 px-4 py-3 transition-colors hover:bg-neutral-50"
+      >
         <div className="min-w-0">
           <h3 className="truncate text-base font-semibold tracking-tight text-neutral-900">
             {item.record.movement}
@@ -58,7 +61,7 @@ export default function HomeRecentCard({ item }: { item: FeedEntry }) {
         >
           {date}
         </time>
-      </div>
-    </Link>
+      </Link>
+    </article>
   );
 }
