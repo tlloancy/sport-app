@@ -14,6 +14,7 @@ export type UploadErrorType =
   | 'network'
   | 'invalid_response'
   | 'upload_limit'
+  | 'rate_limit'
   | 'unknown';
 
 export interface UploadErrorOrigin {
@@ -157,12 +158,14 @@ function isUploadErrorType(value: unknown): value is UploadErrorType {
     value === 'network' ||
     value === 'invalid_response' ||
     value === 'upload_limit' ||
+    value === 'rate_limit' ||
     value === 'unknown'
   );
 }
 
 function inferType(step: UploadStep, status: number, message?: string): UploadErrorType {
   if (status === 0 || status >= 502) return 'network';
+  if (status === 429) return 'rate_limit';
   if (status === 413) return 'upload_limit';
   if (status === 400 && step === 'chunk') return 'missing_file';
   if (status === 400 && step === 'publish') return 'missing_fields';
@@ -336,6 +339,8 @@ export function errorTypeLabel(type: UploadErrorType): string {
       return 'Réponse serveur';
     case 'upload_limit':
       return 'Limites vidéo';
+    case 'rate_limit':
+      return 'Trop de requêtes';
     default:
       return 'Erreur inconnue';
   }

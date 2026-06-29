@@ -129,7 +129,15 @@ function initSchema(database: Database.Database) {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS chunk_upload_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_key TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS performance_index_did ON performance_index(did);
+    CREATE INDEX IF NOT EXISTS chunk_upload_attempts_client_created
+      ON chunk_upload_attempts(client_key, created_at);
   `);
 }
 
@@ -318,6 +326,21 @@ export function countReportsSince(anonId: string, sinceIso: string): number {
     )
     .get(anonId, sinceIso) as { count: number };
   return row.count;
+}
+
+export function countChunkUploadsSince(clientKey: string, sinceIso: string): number {
+  const row = getDb()
+    .prepare(
+      'SELECT COUNT(*) AS count FROM chunk_upload_attempts WHERE client_key = ? AND created_at >= ?'
+    )
+    .get(clientKey, sinceIso) as { count: number };
+  return row.count;
+}
+
+export function insertChunkUploadAttempt(clientKey: string): void {
+  getDb()
+    .prepare('INSERT INTO chunk_upload_attempts (client_key, created_at) VALUES (?, ?)')
+    .run(clientKey, new Date().toISOString());
 }
 
 export type EloScoreRow = {
