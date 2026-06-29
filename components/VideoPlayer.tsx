@@ -79,6 +79,13 @@ export default function VideoPlayer({
   }, [chunkManifest]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (video && wantsPlayback) {
+      applyAutoplayMute(video);
+    }
+  }, [wantsPlayback, chunkManifest]);
+
+  useEffect(() => {
     if (!viewportAutoplay) return undefined;
 
     const root = containerRef.current;
@@ -197,7 +204,6 @@ export default function VideoPlayer({
         data-testid="video-player"
         controls
         playsInline
-        defaultMuted={wantsPlayback}
         loop={loop}
         preload={wantsPlayback ? 'auto' : 'metadata'}
         autoPlay={autoPlay && !viewportAutoplay}
