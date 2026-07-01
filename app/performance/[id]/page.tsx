@@ -43,7 +43,12 @@ export default async function PerformancePage({
       <p className="text-sm text-gray-500">
         {record.discipline}
       </p>
-      <PerformanceClient chunkManifest={hashes} peers={peers} />
+      <PerformanceClient
+        chunkManifest={hashes}
+        peers={peers}
+        movement={record.movement}
+        rkey={params.id}
+      />
     </main>
   );
 }
