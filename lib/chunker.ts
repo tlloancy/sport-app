@@ -48,6 +48,67 @@ export function probeVideoDuration(inputPath: string): number {
   return durationSec;
 }
 
+/** Clockwise display rotation from phone metadata (0, 90, 180, 270). */
+export function normalizeVideoRotation(degrees: number): 0 | 90 | 180 | 270 {
+  if (!Number.isFinite(degrees)) return 0;
+  const rounded = Math.round(degrees);
+  const normalized = ((rounded % 360) + 360) % 360;
+  if (normalized === 90) return 90;
+  if (normalized === 180) return 180;
+  if (normalized === 270) return 270;
+  return 0;
+}
+
+/** Read rotation metadata via ffprobe (stream tag or display matrix). */
+export function probeVideoRotation(inputPath: string): 0 | 90 | 180 | 270 {
+  try {
+    const tag = execSync(
+      `ffprobe -v error -select_streams v:0 -show_entries stream_tags=rotate -of default=noprint_wrappers=1:nokey=1 "${inputPath}"`,
+      { stdio: 'pipe', timeout: 15_000 }
+    )
+      .toString('utf8')
+      .trim();
+    if (tag) return normalizeVideoRotation(Number.parseInt(tag, 10));
+  } catch {
+    // no rotate tag
+  }
+
+  try {
+    const sideData = execSync(
+      `ffprobe -v error -select_streams v:0 -show_entries stream_side_data=rotation -of csv=p=0 "${inputPath}"`,
+      { stdio: 'pipe', timeout: 15_000 }
+    )
+      .toString('utf8')
+      .trim();
+    if (sideData) return normalizeVideoRotation(Number.parseFloat(sideData));
+  } catch {
+    // no side data
+  }
+
+  return 0;
+}
+
+/** ffmpeg transpose filter to bake phone rotation into encoded pixels. */
+export function rotationVideoFilter(degrees: 0 | 90 | 180 | 270): string | null {
+  switch (degrees) {
+    case 90:
+      return 'transpose=1';
+    case 180:
+      return 'hflip,vflip';
+    case 270:
+      return 'transpose=2';
+    default:
+      return null;
+  }
+}
+
+function encodeVideoFilter(rotation: 0 | 90 | 180 | 270): string {
+  const rotate = rotationVideoFilter(rotation);
+  const parts = rotate ? [rotate] : [];
+  parts.push('format=yuv420p', 'scale=trunc(iw/2)*2:trunc(ih/2)*2');
+  return parts.join(',');
+}
+
 export function assertUploadWithinLimits(sizeBytes: number, durationSec: number): void {
   if (!isWithinUploadLimits(sizeBytes, durationSec)) {
     throw new UploadLimitError(describeUploadLimitError(sizeBytes, durationSec));
@@ -61,7 +122,7 @@ function runFfmpeg(args: string): void {
   });
 }
 
-/** HLS segment — stream copy first (fast), libx264 ultrafast fallback. */
+/** HLS segment — stream copy when upright; re-encode with rotation baked in otherwise. */
 function segmentToHls(inputPath: string, tmp: string): void {
   const segTpl = path.join(tmp, 'seg_%03d.ts');
   const playlist = path.join(tmp, 'playlist.m3u8');
@@ -74,21 +135,26 @@ function segmentToHls(inputPath: string, tmp: string): void {
     `"${playlist}"`,
   ].join(' ');
 
-  try {
-    runFfmpeg(`-i "${inputPath}" -c:v copy -c:a copy ${hlsOut}`);
-    if (fs.readdirSync(tmp).some((f) => f.endsWith('.ts'))) {
-      return;
+  const rotation = probeVideoRotation(inputPath);
+
+  if (rotation === 0) {
+    try {
+      runFfmpeg(`-i "${inputPath}" -c:v copy -c:a copy ${hlsOut}`);
+      if (fs.readdirSync(tmp).some((f) => f.endsWith('.ts'))) {
+        return;
+      }
+    } catch {
+      // fall through to re-encode
     }
-  } catch {
-    // fall through to re-encode
+
+    for (const name of fs.readdirSync(tmp)) {
+      fs.rmSync(path.join(tmp, name), { force: true });
+    }
   }
 
-  for (const name of fs.readdirSync(tmp)) {
-    fs.rmSync(path.join(tmp, name), { force: true });
-  }
-
+  const vf = encodeVideoFilter(rotation);
   runFfmpeg(
-    `-i "${inputPath}" -c:v libx264 -preset ultrafast -tune zerolatency -threads 0 -pix_fmt yuv420p -g 30 -c:a aac -b:a 128k -ac 2 ${hlsOut}`
+    `-i "${inputPath}" -vf "${vf}" -c:v libx264 -preset ultrafast -tune zerolatency -threads 0 -g 30 -c:a aac -b:a 128k -ac 2 ${hlsOut}`
   );
 }
 
